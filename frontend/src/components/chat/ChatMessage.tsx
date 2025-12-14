@@ -1,6 +1,6 @@
 import { Message } from '@/types';
-import ReactMarkdown from 'react-markdown';
 import { User, Bot, Wrench } from 'lucide-react';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 interface ChatMessageProps {
   message: Message;
@@ -25,9 +25,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
               : 'bg-white border border-gray-200'
           }`}
         >
-          <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
-          </div>
+          <MarkdownRenderer
+            content={message.content}
+            className={isUser ? 'text-white prose-invert' : ''}
+          />
         </div>
 
         {/* Tool Executions */}
@@ -49,11 +50,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 </div>
 
                 {tool.success ? (
-                  <div className="text-xs text-gray-600 font-mono overflow-x-auto">
-                    {tool.tool_output && tool.tool_output.length > 200
-                      ? `${tool.tool_output.substring(0, 200)}...`
-                      : tool.tool_output || 'No output'}
-                  </div>
+                  tool.tool_output ? (
+                    <MarkdownRenderer
+                      content={tool.tool_output}
+                      className="prose prose-xs text-gray-600 max-w-none"
+                    />
+                  ) : (
+                    <div className="text-xs text-gray-500">No output</div>
+                  )
                 ) : (
                   <div className="text-xs text-red-600">
                     Error: {tool.error_message || 'Unknown error'}
