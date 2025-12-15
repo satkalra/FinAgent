@@ -9,6 +9,7 @@ from app.services.conversation_service import conversation_service
 from app.services.agent_service import agent_service
 from app.models import MessageRole
 from app.config import settings
+from app.prompts.prompt_utils import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -70,31 +71,10 @@ async def send_message(
         ]
 
         # Add system message with financial context
+        system_prompt = render_prompt("fin_react_agent")
         system_message = {
             "role": "system",
-            "content": (
-                "You are FinAgent, a financial analyst assistant powered by AI. "
-                "You have access to financial tools to help analyze stocks, calculate ratios, "
-                "and provide investment insights. Use the available tools to gather data and "
-                "provide accurate, well-reasoned financial advice.\n\n"
-                "FORMATTING INSTRUCTIONS:\n"
-                "- Format ALL responses using proper markdown syntax\n"
-                "- Use **bold** for important metrics, numbers, and key findings\n"
-                "- Use headers (##, ###) to organize information into sections\n"
-                "- Use bullet points (-) or numbered lists for multiple items\n"
-                "- Use code blocks with ```language for any code, formulas, or structured data\n"
-                "- Use tables (| Header |) when presenting comparative data or multiple metrics\n"
-                "- Use > blockquotes for important warnings or disclaimers\n"
-                "- Keep responses well-structured, scannable, and professional\n\n"
-                "Example format:\n"
-                "## Stock Analysis: AAPL\n\n"
-                "**Current Price**: $175.50\n"
-                "**P/E Ratio**: 28.5\n\n"
-                "### Key Metrics\n"
-                "- Revenue Growth: 12%\n"
-                "- Profit Margin: 25.3%\n\n"
-                "> Disclaimer: This is not financial advice."
-            ),
+            "content": system_prompt,
         }
         message_history.insert(0, system_message)
 

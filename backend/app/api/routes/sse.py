@@ -24,9 +24,9 @@ async def stream_chat(
 ):
     """
     Stream chat responses with SSE including:
-    - Extended thinking (GPT-4 reasoning process)
+    - Status updates for each stage of processing
     - Tool execution updates
-    - AI response chunks
+    - Streaming AI response chunks
 
     Args:
         conversation_id: Conversation ID
@@ -57,14 +57,16 @@ async def stream_chat(
                 content=message,
             )
 
-            # Send user message event
+            # Send user message status
             yield sse_manager.format_sse(
                 {
-                    "type": "user_message",
+                    "type": "status",
+                    "status": "user_saved",
+                    "message": "User message received",
                     "message_id": user_message.id,
-                    "content": message,
+                    "role": MessageRole.USER.value,
                 },
-                event="user_message"
+                event="status"
             )
 
             # Build conversation history
@@ -92,23 +94,76 @@ async def stream_chat(
             # Stream agent execution
             start_time = time.time()
             response_content_chunks = []
+            final_response_text = ""
 
             async for event in agent_service.execute_agent_streaming(
                 messages=message_history,
                 db=db,
                 message_id=user_message.id,
             ):
-                # Forward events to client
-                if event["type"] == "content_chunk":
-                    response_content_chunks.append(event["content"])
+                event_type = event.get("type")
 
-                yield sse_manager.format_sse(event, event=event["type"])
+                if event_type == "content_chunk":
+                    chunk = event.get("content", "")
+                    if chunk:
+                        response_content_chunks.append(chunk)
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "answer",
+                            "chunk": chunk,
+                            "is_final": False,
+                        },
+                        event="answer",
+                    )
+                elif event_type == "tool_call":
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "status",
+                            "status": "tool_call",
+                            "message": f"Running tool: {event.get('tool_name')}",
+                            "tool_name": event.get("tool_name"),
+                            "tool_input": event.get("tool_input"),
+                        },
+                        event="status",
+                    )
+                elif event_type == "tool_result":
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "status",
+                            "status": "tool_result",
+                            "message": f"Tool {event.get('tool_name')} completed",
+                            "tool_name": event.get("tool_name"),
+                            "tool_output": event.get("tool_output"),
+                            "execution_time_ms": event.get("execution_time_ms"),
+                        },
+                        event="status",
+                    )
+                elif event_type == "final_response":
+                    final_response_text = event.get("content", "")
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "answer",
+                            "content": final_response_text,
+                            "is_final": True,
+                            "iterations": event.get("iterations"),
+                        },
+                        event="answer",
+                    )
+                elif event_type == "error":
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "status",
+                            "status": "error",
+                            "message": event.get("content") or event.get("error") or "Unknown error",
+                        },
+                        event="status",
+                    )
 
             # Calculate response time
             response_time_ms = int((time.time() - start_time) * 1000)
 
             # Save assistant message
-            response_content = "".join(response_content_chunks)
+            response_content = final_response_text or "".join(response_content_chunks)
             assistant_message = await conversation_service.add_message(
                 db=db,
                 conversation_id=conversation.id,
@@ -120,14 +175,28 @@ async def stream_chat(
 
             await db.commit()
 
-            # Send completion event
+            # Send assistant saved status
             yield sse_manager.format_sse(
                 {
-                    "type": "complete",
+                    "type": "status",
+                    "status": "assistant_saved",
+                    "message": "Assistant response saved",
                     "message_id": assistant_message.id,
                     "response_time_ms": response_time_ms,
+                    "role": MessageRole.ASSISTANT.value,
                 },
-                event="complete"
+                event="status"
+            )
+
+            # Notify completion
+            yield sse_manager.format_sse(
+                {
+                    "type": "status",
+                    "status": "complete",
+                    "message": "Streaming complete",
+                    "conversation_id": conversation.id,
+                },
+                event="status"
             )
 
         except Exception as e:
