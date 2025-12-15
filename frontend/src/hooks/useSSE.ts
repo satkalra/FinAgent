@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
 import { SSEEvent } from '@/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000/sse';
 
@@ -25,8 +25,11 @@ export function useSSE(conversationId: number | null) {
     const eventTypes = [
       'user_message',
       'content_chunk',
+      'thought',
       'tool_call',
       'tool_result',
+      'status',
+      'answer',
       'final_response',
       'complete',
       'error',

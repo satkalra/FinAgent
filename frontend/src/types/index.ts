@@ -50,21 +50,30 @@ export interface StatusUpdate {
   progress?: number; // 0-100
 }
 
+export interface ThoughtStep {
+  iteration: number;
+  thought: string;
+  action: string;
+}
+
 export interface ChatResponse {
   conversation_id: number;
   user_message: Message;
   assistant_message: Message;
   status?: AgentStatus;
   status_updates?: StatusUpdate[];
+  thoughts?: ThoughtStep[];
 }
 
 // SSE Event types
 export type SSEEvent =
   | { type: 'user_message'; message_id: number; content: string }
   | { type: 'content_chunk'; content: string }
+  | { type: 'thought'; iteration: number; thought: string; action: string }
   | { type: 'tool_call'; tool_name: string; tool_input: Record<string, any> }
   | { type: 'tool_result'; tool_name: string; tool_output: string; execution_time_ms: number }
   | { type: 'status'; status: string; message: string; tool_name?: string; progress?: number }
+  | { type: 'answer'; chunk?: string; content?: string; is_final?: boolean; iterations?: number }
   | { type: 'final_response'; content: string; iterations: number }
   | { type: 'complete'; message_id: number; response_time_ms: number }
   | { type: 'error'; error?: string; content?: string };
