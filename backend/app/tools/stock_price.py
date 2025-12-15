@@ -11,6 +11,7 @@ class StockPriceTool(BaseTool):
 
     name = "get_stock_price"
     description = "Get current stock price, historical prices, and basic stock information for a given ticker symbol"
+    display_name = "Stock Price Lookup"
 
     async def execute(
         self,

@@ -9,6 +9,7 @@ class CalculatorTool(BaseTool):
 
     name = "calculate_investment_returns"
     description = "Calculate investment returns, compound interest, and future value of investments given principal, rate, and time period"
+    display_name = "Investment Calculator"
 
     async def execute(
         self,

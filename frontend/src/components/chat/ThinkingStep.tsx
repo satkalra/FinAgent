@@ -8,9 +8,18 @@ interface ThinkingStepProps {
 
 export function ThinkingStepComponent({ thought, isLatest = false }: ThinkingStepProps) {
   const getActionColor = (action: string) => {
-    if (action === 'final_answer') return 'text-green-600 bg-green-50 border-green-200';
-    if (action.includes('get_') || action.includes('calculate_')) return 'text-purple-600 bg-purple-50 border-purple-200';
-    return 'text-blue-600 bg-blue-50 border-blue-200';
+    const lower = action.toLowerCase();
+    if (lower === 'final_answer') return 'text-green-600 bg-green-50 border-green-200';
+    if (lower.includes('calculate') || lower.includes('ratio') || lower.includes('investment')) {
+      return 'text-purple-600 bg-purple-50 border-purple-200';
+    }
+    if (lower.includes('stock') || lower.includes('price')) {
+      return 'text-blue-600 bg-blue-50 border-blue-200';
+    }
+    if (lower.includes('company')) {
+      return 'text-indigo-600 bg-indigo-50 border-indigo-200';
+    }
+    return 'text-primary-600 bg-primary-50 border-primary-200';
   };
 
   const getActionLabel = (action: string) => {

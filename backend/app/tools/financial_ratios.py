@@ -10,6 +10,7 @@ class FinancialRatiosTool(BaseTool):
 
     name = "calculate_financial_ratios"
     description = "Calculate and get key financial ratios including P/E, PEG, P/B, ROE, ROA, profit margins, debt ratios, and dividend yield"
+    display_name = "Financial Ratios"
 
     async def execute(self, ticker: str, **kwargs) -> str:
         """

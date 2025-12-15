@@ -3,27 +3,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000/sse';
 
-export function useSSE(conversationId: number | null) {
+export function useSSE() {
   const [isConnected, setIsConnected] = useState(false);
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const connect = useCallback((message: string) => {
-    if (!conversationId) {
-      console.error('No conversation ID provided');
-      return;
-    }
-
-    const url = `${SSE_BASE_URL}/chat/${conversationId}?message=${encodeURIComponent(message)}`;
+  const connect = useCallback((message: string, history: SSEEvent[] = []) => {
+    const encodedHistory = encodeURIComponent(JSON.stringify(history));
+    const url = `${SSE_BASE_URL}/chat?message=${encodeURIComponent(message)}&history=${encodedHistory}`;
     const eventSource = new EventSource(url);
 
     eventSourceRef.current = eventSource;
     setIsConnected(true);
     setEvents([]);
 
-    // Listen to all event types
     const eventTypes = [
-      'user_message',
       'content_chunk',
       'thought',
       'tool_call',
@@ -58,7 +52,7 @@ export function useSSE(conversationId: number | null) {
     });
 
     return eventSource;
-  }, [conversationId]);
+  }, []);
 
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {

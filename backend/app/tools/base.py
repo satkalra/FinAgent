@@ -27,6 +27,7 @@ class BaseTool(ABC):
 
     name: str
     description: str
+    display_name: Optional[str] = None
 
     @abstractmethod
     async def execute(self, **kwargs) -> str:
@@ -82,6 +83,14 @@ class BaseTool(ABC):
             "description": self.description,
             "parameters": schema,
         }
+
+    def get_display_name(self) -> str:
+        """
+        Get human-readable tool name for UI/status updates.
+        """
+        if self.display_name:
+            return self.display_name
+        return self.name.replace("_", " ").title()
 
 
 class ToolRegistry:

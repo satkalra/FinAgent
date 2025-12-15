@@ -1,4 +1,3 @@
-import { chatService } from '@/services/chatService';
 import { AgentStatus, Message, SSEEvent, StatusUpdate, ThoughtStep } from '@/types';
 import { Send } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -9,7 +8,6 @@ import { ThinkingStepComponent } from './ThinkingStep';
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [conversationId, setConversationId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<StatusUpdate | null>(null);
   const [latestThoughts, setLatestThoughts] = useState<ThoughtStep[]>([]);
@@ -24,9 +22,13 @@ export function ChatInterface() {
     scrollToBottom();
   }, [messages, currentStatus, latestThoughts]);
 
-  const streamSSEMessage = async (content: string, convId: number) => {
+  const streamSSEMessage = async (content: string, historyMessages: Pick<Message, 'role' | 'content'>[]) => {
     const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000/sse';
-    const url = `${SSE_BASE_URL}/chat/${convId}?message=${encodeURIComponent(content)}`;
+    const historyPayload = historyMessages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+    const url = `${SSE_BASE_URL}/chat?message=${encodeURIComponent(content)}&history=${encodeURIComponent(JSON.stringify(historyPayload))}`;
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
@@ -40,13 +42,19 @@ export function ChatInterface() {
         try {
           const data = JSON.parse(e.data) as SSEEvent;
           if (data.type === 'status' && 'message' in data) {
+            const toolName = data.tool_name || data.tool_internal_name;
             const status: StatusUpdate = {
               status: (data.status || 'thinking') as AgentStatus,
               message: data.message,
-              tool_name: data.tool_name,
+              tool_name: toolName,
+              tool_internal_name: data.tool_internal_name,
               progress: data.progress,
             };
             setCurrentStatus(status);
+
+            if (status.status === 'completed' || status.status === 'complete') {
+              setLatestThoughts([]);
+            }
           }
         } catch (error) {
           console.error('Error parsing status event:', error);
@@ -114,7 +122,6 @@ export function ChatInterface() {
             if (assistantContent) {
               const assistantMessage: Message = {
                 id: Date.now(),
-                conversation_id: convId,
                 role: 'assistant',
                 content: assistantContent,
                 created_at: new Date().toISOString(),
@@ -129,12 +136,8 @@ export function ChatInterface() {
 
             setIsLoading(false);
 
-            // Clear thoughts and status after delay
-            setTimeout(() => {
-              setCurrentStatus(null);
-              setLatestThoughts([]);
-            }, 5000);
-
+            setCurrentStatus(null);
+            setLatestThoughts([]);
             resolve();
           }
         } catch (error) {
@@ -150,10 +153,14 @@ export function ChatInterface() {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
+    const historyBeforeMessage = messages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
     // Optimistically add user message immediately
     const optimisticUserMessage: Message = {
       id: Date.now(), // Temporary ID
-      conversation_id: conversationId || 0,
       role: 'user',
       content,
       created_at: new Date().toISOString(),
@@ -172,25 +179,7 @@ export function ChatInterface() {
     });
 
     try {
-      // First, create conversation if needed
-      let currentConvId = conversationId;
-      if (!currentConvId) {
-        const response = await chatService.sendMessage(content, undefined);
-        currentConvId = response.conversation_id;
-        setConversationId(currentConvId);
-
-        // Replace optimistic message with real user message
-        setMessages((prev) => {
-          const withoutOptimistic = prev.filter((msg) => msg.id !== optimisticUserMessage.id);
-          return [...withoutOptimistic, response.user_message];
-        });
-      } else {
-        // Add message to existing conversation via REST first to ensure it's saved
-        await chatService.sendMessage(content, currentConvId);
-      }
-
-      // Then stream the response via SSE
-      await streamSSEMessage(content, currentConvId);
+      await streamSSEMessage(content, historyBeforeMessage);
     } catch (error) {
       console.error('Error sending message:', error);
 
@@ -202,7 +191,6 @@ export function ChatInterface() {
       // Add error message to chat
       const errorMessage: Message = {
         id: Date.now() + 1,
-        conversation_id: conversationId || 0,
         role: 'assistant',
         content: `❌ **Error**: Failed to get response from FinAgent. ${error instanceof Error ? error.message : 'Please try again.'
           }`,

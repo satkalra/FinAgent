@@ -82,8 +82,6 @@ async def send_message(
         start_time = time.time()
         agent_result = await agent_service.execute_agent(
             messages=message_history,
-            db=db,
-            message_id=user_message.id,  # For tool execution logging
         )
         response_time_ms = int((time.time() - start_time) * 1000)
 

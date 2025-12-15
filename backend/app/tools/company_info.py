@@ -10,6 +10,7 @@ class CompanyInfoTool(BaseTool):
 
     name = "get_company_info"
     description = "Get detailed company information including sector, industry, employees, description, and key executives for a given ticker symbol"
+    display_name = "Company Insights"
 
     async def execute(self, ticker: str, **kwargs) -> str:
         """

@@ -4,9 +4,6 @@ import logging
 import re
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional
-
-from app.database import AsyncSession
-from app.models import Message, ToolExecution
 from app.schemas.message import AgentStatus, StatusUpdate
 from app.services.openai_service import openai_service
 from app.tools import tool_registry
@@ -56,11 +53,19 @@ class AgentService:
 
         return None
 
+    def _get_tool_display_name(self, tool_name: str) -> str:
+        """Return a human-readable tool name for UI/status updates."""
+        tool = self.tool_registry.get_tool(tool_name)
+        if tool:
+            try:
+                return tool.get_display_name()
+            except AttributeError:
+                pass
+        return tool_name.replace("_", " ").title()
+
     async def execute_agent(
         self,
         messages: List[ChatCompletionMessageParam],
-        db: Optional[AsyncSession] = None,
-        message_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Execute agent with React loop using structured JSON responses.
@@ -130,13 +135,16 @@ class AgentService:
             thought = parsed_response.get("thought", "")
             action = parsed_response.get("action", "")
             action_input = parsed_response.get("action_input", {})
+            display_action = action
+            if action and action != "final_answer":
+                display_action = self._get_tool_display_name(action)
 
             # Track the thought
             if thought:
                 thoughts.append({
                     "iteration": iteration,
                     "thought": thought,
-                    "action": action,
+                    "action": display_action,
                 })
                 logger.info(f"Thought: {thought}")
 
@@ -164,11 +172,12 @@ class AgentService:
 
             # Execute tool if action is a tool name
             if action and action != "final_answer":
+                tool_display_name = display_action or action
                 # Update status - calling tool
                 status_updates.append(StatusUpdate(
                     status=AgentStatus.CALLING_TOOL,
-                    message=f"Using {action}...",
-                    tool_name=action
+                    message=f"Using {tool_display_name}...",
+                    tool_name=tool_display_name
                 ))
 
                 logger.info(f"Calling tool: {action} with args: {action_input}")
@@ -178,14 +187,12 @@ class AgentService:
                 tool_result = await self._execute_tool(
                     action,
                     action_input,
-                    db=db,
-                    message_id=message_id,
                 )
                 execution_time = int((time.time() - start_time) * 1000)
 
                 # Track execution
                 tool_executions.append({
-                    "tool_name": action,
+                    "tool_name": tool_display_name,
                     "tool_input": action_input,
                     "tool_output": tool_result,
                     "execution_time_ms": execution_time,
@@ -194,14 +201,14 @@ class AgentService:
                 # Update status - processing results
                 status_updates.append(StatusUpdate(
                     status=AgentStatus.PROCESSING_RESULTS,
-                    message=f"Processing results from {action}...",
-                    tool_name=action
+                    message=f"Processing results from {tool_display_name}...",
+                    tool_name=tool_display_name
                 ))
 
                 # Add tool result as user message (observation)
                 messages.append({
                     "role": "user",
-                    "content": f"Tool result from {action}:\n{tool_result}",
+                    "content": f"Tool result from {tool_display_name}:\n{tool_result}",
                 })
 
         # Max iterations reached
@@ -221,8 +228,6 @@ class AgentService:
     async def execute_agent_streaming(
         self,
         messages: List[ChatCompletionMessageParam],
-        db: Optional[AsyncSession] = None,
-        message_id: Optional[int] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute agent with streaming responses and intermediate thinking.
@@ -291,6 +296,9 @@ class AgentService:
             thought = parsed_response.get("thought", "")
             action = parsed_response.get("action", "")
             action_input = parsed_response.get("action_input", {})
+            display_action = action
+            if action and action != "final_answer":
+                display_action = self._get_tool_display_name(action)
 
             # Emit thought with status update
             if thought:
@@ -306,7 +314,7 @@ class AgentService:
                     "type": "thought",
                     "iteration": iteration,
                     "thought": thought,
-                    "action": action,
+                    "action": display_action,
                 }
 
             # Add assistant message to conversation
@@ -333,18 +341,21 @@ class AgentService:
 
             # Execute tool if action is a tool name
             if action and action != "final_answer":
+                tool_display_name = display_action or action
                 # Emit status - calling tool
                 yield {
                     "type": "status",
                     "status": "calling_tool",
-                    "message": f"Using {action}...",
-                    "tool_name": action
+                    "message": f"Using {tool_display_name}...",
+                    "tool_name": tool_display_name,
+                    "tool_internal_name": action,
                 }
 
                 # Emit tool call event
                 yield {
                     "type": "tool_call",
-                    "tool_name": action,
+                    "tool_name": tool_display_name,
+                    "tool_internal_name": action,
                     "tool_input": action_input,
                 }
 
@@ -353,8 +364,6 @@ class AgentService:
                 tool_result = await self._execute_tool(
                     action,
                     action_input,
-                    db=db,
-                    message_id=message_id,
                 )
                 execution_time = int((time.time() - start_time) * 1000)
 
@@ -362,14 +371,16 @@ class AgentService:
                 yield {
                     "type": "status",
                     "status": "processing_results",
-                    "message": f"Processing results from {action}...",
-                    "tool_name": action
+                    "message": f"Processing results from {tool_display_name}...",
+                    "tool_name": tool_display_name,
+                    "tool_internal_name": action,
                 }
 
                 # Emit tool result event
                 yield {
                     "type": "tool_result",
-                    "tool_name": action,
+                    "tool_name": tool_display_name,
+                    "tool_internal_name": action,
                     "tool_output": tool_result,
                     "execution_time_ms": execution_time,
                 }
@@ -377,7 +388,7 @@ class AgentService:
                 # Add tool result as observation
                 messages.append({
                     "role": "user",
-                    "content": f"Tool result from {action}:\n{tool_result}",
+                    "content": f"Tool result from {tool_display_name}:\n{tool_result}",
                 })
 
         # Max iterations reached
@@ -395,8 +406,6 @@ class AgentService:
         self,
         tool_name: str,
         tool_args: Dict[str, Any],
-        db: Optional[AsyncSession] = None,
-        message_id: Optional[int] = None,
     ) -> str:
         """
         Execute a tool and optionally log to database.
@@ -420,37 +429,11 @@ class AgentService:
             # Execute tool
             result = await tool.execute(**tool_args)
 
-            # Log to database if db session provided
-            if db and message_id:
-                tool_execution = ToolExecution(
-                    message_id=message_id,
-                    tool_name=tool_name,
-                    tool_input=tool_args,
-                    tool_output=result,
-                    success=True,
-                )
-                db.add(tool_execution)
-                await db.flush()
-
             return result
 
         except Exception as e:
             error_msg = f"Error executing tool '{tool_name}': {str(e)}"
             logger.error(error_msg)
-
-            # Log error to database
-            if db and message_id:
-                tool_execution = ToolExecution(
-                    message_id=message_id,
-                    tool_name=tool_name,
-                    tool_input=tool_args,
-                    tool_output=None,
-                    success=False,
-                    error_message=str(e),
-                )
-                db.add(tool_execution)
-                await db.flush()
-
             return json.dumps({"error": error_msg})
 
 

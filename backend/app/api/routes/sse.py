@@ -1,102 +1,59 @@
 """SSE (Server-Sent Events) endpoints for real-time streaming."""
+import json
 import logging
-import time
+from typing import Any, Dict, List
 
-from app.config import settings
 from app.core.sse_manager import sse_manager
-from app.database import get_db
-from app.models import MessageRole
 from app.prompts.prompt_utils import render_prompt
 from app.services.agent_service import agent_service
-from app.services.conversation_service import conversation_service
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/chat/{conversation_id}")
+@router.get("/chat")
 async def stream_chat(
-    conversation_id: int,
     message: str = Query(..., min_length=1),
-    db: AsyncSession = Depends(get_db),
+    history: str | None = Query(default=None, description="JSON encoded prior messages"),
 ):
-    """
-    Stream chat responses with SSE including:
-    - Status updates for each stage of processing
-    - Tool execution updates
-    - Streaming AI response chunks
-
-    Args:
-        conversation_id: Conversation ID
-        message: User message
-        db: Database session
-
-    Returns:
-        StreamingResponse with SSE events
-    """
+    """Stream chat responses over SSE without any persistence layer."""
 
     async def event_generator():
         """Generate SSE events for the chat stream."""
         try:
-            # Get conversation
-            conversation = await conversation_service.get_conversation(db, conversation_id)
-            if not conversation:
-                yield sse_manager.format_sse(
-                    {"error": "Conversation not found"},
-                    event="error"
-                )
-                return
+            try:
+                parsed_history: List[Dict[str, Any]] = json.loads(history) if history else []
+                if not isinstance(parsed_history, list):
+                    parsed_history = []
+            except json.JSONDecodeError:
+                parsed_history = []
 
-            # Add user message
-            user_message = await conversation_service.add_message(
-                db=db,
-                conversation_id=conversation.id,
-                role=MessageRole.USER,
-                content=message,
-            )
+            sanitized_history = []
+            for item in parsed_history:
+                if not isinstance(item, dict):
+                    continue
+                content = item.get("content")
+                if not content:
+                    continue
+                sanitized_history.append({
+                    "role": item.get("role", "user"),
+                    "content": content,
+                })
 
-            # Send user message status
-            yield sse_manager.format_sse(
-                {
-                    "type": "status",
-                    "status": "user_saved",
-                    "message": "User message received",
-                    "message_id": user_message.id,
-                    "role": MessageRole.USER.value,
-                },
-                event="status"
-            )
-
-            # Build conversation history
-            messages = await conversation_service.get_messages(db, conversation.id)
-            message_history = [
-                {
-                    "role": msg.role.value,
-                    "content": msg.content,
-                }
-                for msg in messages
-            ]
-
-            # Add system message
             system_message = {
                 "role": "system",
                 "content": render_prompt("fin_react_agent"),
             }
-            message_history.insert(0, system_message)
+            message_history = [system_message, *sanitized_history, {"role": "user", "content": message}]
 
-            # Stream agent execution
-            start_time = time.time()
-            response_content_chunks = []
+            response_content_chunks: List[str] = []
             final_response_text = ""
 
             async for event in agent_service.execute_agent_streaming(
                 messages=message_history,
-                db=db,
-                message_id=user_message.id,
             ):
                 event_type = event.get("type")
 
@@ -131,27 +88,33 @@ async def stream_chat(
                             "status": event.get("status"),
                             "message": event.get("message"),
                             "progress": event.get("progress"),
+                            "tool_name": event.get("tool_name"),
+                            "tool_internal_name": event.get("tool_internal_name"),
                         },
                         event="status",
                     )
                 elif event_type == "tool_call":
+                    display_name = event.get("tool_name") or event.get("tool_internal_name")
                     yield sse_manager.format_sse(
                         {
                             "type": "status",
                             "status": "tool_call",
-                            "message": f"Running tool: {event.get('tool_name')}",
-                            "tool_name": event.get("tool_name"),
+                            "message": f"Running tool: {display_name}",
+                            "tool_name": display_name,
+                            "tool_internal_name": event.get("tool_internal_name"),
                             "tool_input": event.get("tool_input"),
                         },
                         event="status",
                     )
                 elif event_type == "tool_result":
+                    display_name = event.get("tool_name") or event.get("tool_internal_name")
                     yield sse_manager.format_sse(
                         {
                             "type": "status",
                             "status": "tool_result",
-                            "message": f"Tool {event.get('tool_name')} completed",
-                            "tool_name": event.get("tool_name"),
+                            "message": f"Tool {display_name} completed",
+                            "tool_name": display_name,
+                            "tool_internal_name": event.get("tool_internal_name"),
                             "tool_output": event.get("tool_output"),
                             "execution_time_ms": event.get("execution_time_ms"),
                         },
@@ -178,42 +141,12 @@ async def stream_chat(
                         event="status",
                     )
 
-            # Calculate response time
-            response_time_ms = int((time.time() - start_time) * 1000)
-
-            # Save assistant message
-            response_content = final_response_text or "".join(response_content_chunks)
-            assistant_message = await conversation_service.add_message(
-                db=db,
-                conversation_id=conversation.id,
-                role=MessageRole.ASSISTANT,
-                content=response_content,
-                response_time_ms=response_time_ms,
-                model_name=settings.openai_model,
-            )
-
-            await db.commit()
-
-            # Send assistant saved status
-            yield sse_manager.format_sse(
-                {
-                    "type": "status",
-                    "status": "assistant_saved",
-                    "message": "Assistant response saved",
-                    "message_id": assistant_message.id,
-                    "response_time_ms": response_time_ms,
-                    "role": MessageRole.ASSISTANT.value,
-                },
-                event="status"
-            )
-
             # Notify completion
             yield sse_manager.format_sse(
                 {
                     "type": "status",
                     "status": "complete",
                     "message": "Streaming complete",
-                    "conversation_id": conversation.id,
                 },
                 event="status"
             )
