@@ -34,10 +34,28 @@ export interface Message {
   tool_executions: ToolExecution[];
 }
 
+export type AgentStatus =
+  | 'idle'
+  | 'thinking'
+  | 'calling_tool'
+  | 'processing_results'
+  | 'generating_response'
+  | 'completed'
+  | 'error';
+
+export interface StatusUpdate {
+  status: AgentStatus;
+  message: string;
+  tool_name?: string;
+  progress?: number; // 0-100
+}
+
 export interface ChatResponse {
   conversation_id: number;
   user_message: Message;
   assistant_message: Message;
+  status?: AgentStatus;
+  status_updates?: StatusUpdate[];
 }
 
 // SSE Event types
@@ -46,6 +64,7 @@ export type SSEEvent =
   | { type: 'content_chunk'; content: string }
   | { type: 'tool_call'; tool_name: string; tool_input: Record<string, any> }
   | { type: 'tool_result'; tool_name: string; tool_output: string; execution_time_ms: number }
+  | { type: 'status'; status: string; message: string; tool_name?: string; progress?: number }
   | { type: 'final_response'; content: string; iterations: number }
   | { type: 'complete'; message_id: number; response_time_ms: number }
   | { type: 'error'; error?: string; content?: string };

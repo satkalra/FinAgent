@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { chatService } from '@/services/chatService';
-import { Message } from '@/types';
+import { Message, AgentStatus, StatusUpdate } from '@/types';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { StatusIndicator } from './StatusIndicator';
 import { Send } from 'lucide-react';
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<StatusUpdate | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -17,7 +19,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, currentStatus]);
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -37,6 +39,10 @@ export function ChatInterface() {
 
     setMessages((prev) => [...prev, optimisticUserMessage]);
     setIsLoading(true);
+    setCurrentStatus({
+      status: 'thinking',
+      message: 'Analyzing your request...',
+    });
 
     try {
       const response = await chatService.sendMessage(content, conversationId || undefined);
@@ -44,6 +50,16 @@ export function ChatInterface() {
       // Update conversation ID if new
       if (!conversationId) {
         setConversationId(response.conversation_id);
+      }
+
+      // Show final status if available
+      if (response.status_updates && response.status_updates.length > 0) {
+        const latestStatus = response.status_updates[response.status_updates.length - 1];
+        setCurrentStatus(latestStatus);
+        // Clear status after 2 seconds
+        setTimeout(() => setCurrentStatus(null), 2000);
+      } else {
+        setCurrentStatus(null);
       }
 
       // Replace optimistic message with real messages from server
@@ -55,6 +71,11 @@ export function ChatInterface() {
       });
     } catch (error) {
       console.error('Error sending message:', error);
+
+      setCurrentStatus({
+        status: 'error',
+        message: 'Failed to get response',
+      });
 
       // Add error message to chat
       const errorMessage: Message = {
@@ -72,6 +93,9 @@ export function ChatInterface() {
       };
 
       setMessages((prev) => [...prev, errorMessage]);
+
+      // Clear error status after 3 seconds
+      setTimeout(() => setCurrentStatus(null), 3000);
     } finally {
       setIsLoading(false);
     }
@@ -131,12 +155,16 @@ export function ChatInterface() {
             {messages.map((message) => (
               <ChatMessage key={message.id} message={message} />
             ))}
-            {isLoading && (
-              <div className="flex items-center gap-2 text-gray-500">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
-                <span className="ml-2">FinAgent is thinking...</span>
+            {currentStatus && (
+              <div className="flex justify-start">
+                <div className="max-w-2xl">
+                  <StatusIndicator
+                    status={currentStatus.status}
+                    message={currentStatus.message}
+                    tool_name={currentStatus.tool_name}
+                    progress={currentStatus.progress}
+                  />
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />

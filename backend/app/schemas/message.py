@@ -2,7 +2,29 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from enum import Enum
 from app.models import MessageRole
+
+
+class AgentStatus(str, Enum):
+    """Enum for agent execution status."""
+
+    IDLE = "idle"
+    THINKING = "thinking"
+    CALLING_TOOL = "calling_tool"
+    PROCESSING_RESULTS = "processing_results"
+    GENERATING_RESPONSE = "generating_response"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+class StatusUpdate(BaseModel):
+    """Schema for status updates during agent execution."""
+
+    status: AgentStatus
+    message: str
+    tool_name: Optional[str] = None
+    progress: Optional[int] = None  # 0-100 percentage
 
 
 class MessageCreate(BaseModel):
@@ -59,3 +81,5 @@ class ChatResponse(BaseModel):
     conversation_id: int
     user_message: MessageResponse
     assistant_message: MessageResponse
+    status: Optional[AgentStatus] = AgentStatus.COMPLETED
+    status_updates: List[StatusUpdate] = []

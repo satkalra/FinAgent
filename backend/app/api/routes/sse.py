@@ -10,6 +10,7 @@ from app.services.agent_service import agent_service
 from app.core.sse_manager import sse_manager
 from app.models import MessageRole
 from app.config import settings
+from app.prompts.prompt_utils import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,7 @@ async def stream_chat(
             # Add system message
             system_message = {
                 "role": "system",
-                "content": (
-                    "You are FinAgent, a financial analyst assistant powered by AI. "
-                    "You have access to financial tools to help analyze stocks, calculate ratios, "
-                    "and provide investment insights. Use the available tools to gather data and "
-                    "provide accurate, well-reasoned financial advice. Be concise and professional."
-                ),
+                "content": render_prompt("fin_react_agent"),
             }
             message_history.insert(0, system_message)
 

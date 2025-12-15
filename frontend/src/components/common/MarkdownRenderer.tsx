@@ -1,5 +1,8 @@
 import clsx from 'clsx';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface MarkdownRendererProps {
   content: string;
@@ -8,6 +11,8 @@ interface MarkdownRendererProps {
 
 const markdownComponents: Components = {
   code({ inline, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '');
+
     if (inline) {
       return (
         <code
@@ -22,16 +27,78 @@ const markdownComponents: Components = {
       );
     }
 
+    // Use syntax highlighting for code blocks with language specified
+    if (match) {
+      return (
+        <SyntaxHighlighter
+          style={oneDark}
+          language={match[1]}
+          PreTag="div"
+          className="rounded-lg my-2 text-sm"
+          customStyle={{
+            margin: 0,
+            borderRadius: '0.5rem',
+          }}
+          {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      );
+    }
+
+    // Fallback for code blocks without language
     return (
       <pre
         className={clsx(
-          'bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-sm',
+          'bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto text-sm my-2',
           className
         )}
         {...props}
       >
         <code className="font-mono">{children}</code>
       </pre>
+    );
+  },
+  h1({ children, ...props }) {
+    return (
+      <h1 className="text-2xl font-bold mt-6 mb-3" {...props}>
+        {children}
+      </h1>
+    );
+  },
+  h2({ children, ...props }) {
+    return (
+      <h2 className="text-xl font-bold mt-5 mb-3 pb-2 border-b border-gray-200" {...props}>
+        {children}
+      </h2>
+    );
+  },
+  h3({ children, ...props }) {
+    return (
+      <h3 className="text-lg font-semibold mt-4 mb-2" {...props}>
+        {children}
+      </h3>
+    );
+  },
+  h4({ children, ...props }) {
+    return (
+      <h4 className="text-base font-semibold mt-3 mb-2" {...props}>
+        {children}
+      </h4>
+    );
+  },
+  p({ children, ...props }) {
+    return (
+      <p className="my-2 leading-relaxed" {...props}>
+        {children}
+      </p>
+    );
+  },
+  strong({ children, ...props }) {
+    return (
+      <strong className="font-bold text-gray-900" {...props}>
+        {children}
+      </strong>
     );
   },
   a({ children, ...props }) {
@@ -63,7 +130,7 @@ const markdownComponents: Components = {
   blockquote({ children, ...props }) {
     return (
       <blockquote
-        className="border-l-4 border-primary-200 pl-4 italic text-gray-600"
+        className="border-l-4 border-blue-500 pl-4 py-2 my-3 bg-blue-50 italic text-gray-700"
         {...props}
       >
         {children}
@@ -72,23 +139,44 @@ const markdownComponents: Components = {
   },
   table({ children, ...props }) {
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left border-collapse" {...props}>
+      <div className="overflow-x-auto my-4">
+        <table className="min-w-full text-left border-collapse border border-gray-300" {...props}>
           {children}
         </table>
       </div>
     );
   },
+  thead({ children, ...props }) {
+    return (
+      <thead className="bg-gray-50" {...props}>
+        {children}
+      </thead>
+    );
+  },
+  tbody({ children, ...props }) {
+    return (
+      <tbody className="bg-white divide-y divide-gray-200" {...props}>
+        {children}
+      </tbody>
+    );
+  },
+  tr({ children, ...props }) {
+    return (
+      <tr className="hover:bg-gray-50" {...props}>
+        {children}
+      </tr>
+    );
+  },
   th({ children, ...props }) {
     return (
-      <th className="border border-gray-200 bg-gray-50 px-3 py-2 font-semibold" {...props}>
+      <th className="border border-gray-300 bg-gray-100 px-4 py-2 font-semibold text-left text-sm" {...props}>
         {children}
       </th>
     );
   },
   td({ children, ...props }) {
     return (
-      <td className="border border-gray-200 px-3 py-2 align-top" {...props}>
+      <td className="border border-gray-300 px-4 py-2 text-sm align-top" {...props}>
         {children}
       </td>
     );
@@ -101,6 +189,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
   return (
     <ReactMarkdown
       className={clsx('prose prose-sm max-w-none break-words', className)}
+      remarkPlugins={[remarkGfm]}
       components={markdownComponents}
     >
       {content}

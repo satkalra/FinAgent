@@ -8,6 +8,7 @@ from app.services.openai_service import openai_service
 from app.tools import tool_registry
 from app.database import AsyncSession
 from app.models import ToolExecution, Message
+from app.schemas.message import AgentStatus, StatusUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,31 @@ class AgentService:
             message_id: Message ID for associating tool executions
 
         Returns:
-            Dict with final response and tool execution logs
+            Dict with final response, tool execution logs, and status updates
         """
         tool_executions = []
+        status_updates = []
         iteration = 0
 
         # Get available tools
         tools = self.tool_registry.get_openai_functions()
 
+        # Initial status
+        status_updates.append(StatusUpdate(
+            status=AgentStatus.THINKING,
+            message="Analyzing your request..."
+        ))
+
         while iteration < self.max_iterations:
             iteration += 1
             logger.info(f"Agent iteration {iteration}")
+
+            # Update status - generating response
+            status_updates.append(StatusUpdate(
+                status=AgentStatus.GENERATING_RESPONSE,
+                message=f"Processing (iteration {iteration})...",
+                progress=min(int((iteration / self.max_iterations) * 100), 90)
+            ))
 
             # Call OpenAI with function calling
             response = await self.openai_service.create_chat_completion(
@@ -82,6 +97,13 @@ class AgentService:
 
                     logger.info(f"Calling tool: {function_name} with args: {function_args}")
 
+                    # Update status - calling tool
+                    status_updates.append(StatusUpdate(
+                        status=AgentStatus.CALLING_TOOL,
+                        message=f"Using {function_name}...",
+                        tool_name=function_name
+                    ))
+
                     # Execute tool
                     start_time = time.time()
                     tool_result = await self._execute_tool(
@@ -100,6 +122,13 @@ class AgentService:
                         "execution_time_ms": execution_time,
                     })
 
+                    # Update status - processing results
+                    status_updates.append(StatusUpdate(
+                        status=AgentStatus.PROCESSING_RESULTS,
+                        message=f"Processing results from {function_name}...",
+                        tool_name=function_name
+                    ))
+
                     # Add tool result to conversation
                     messages.append({
                         "role": "tool",
@@ -109,17 +138,28 @@ class AgentService:
 
             else:
                 # No more tool calls, return final response
+                status_updates.append(StatusUpdate(
+                    status=AgentStatus.COMPLETED,
+                    message="Response complete",
+                    progress=100
+                ))
                 return {
                     "content": assistant_message.content or "",
                     "tool_executions": tool_executions,
+                    "status_updates": status_updates,
                     "iterations": iteration,
                 }
 
         # Max iterations reached
         logger.warning(f"Agent reached max iterations ({self.max_iterations})")
+        status_updates.append(StatusUpdate(
+            status=AgentStatus.ERROR,
+            message="Maximum iterations reached"
+        ))
         return {
             "content": "I apologize, but I've reached the maximum number of tool executions. Please try rephrasing your question.",
             "tool_executions": tool_executions,
+            "status_updates": status_updates,
             "iterations": iteration,
         }
 
@@ -133,13 +173,28 @@ class AgentService:
         Execute agent with streaming responses.
 
         Yields:
-            Dict with events: thinking, tool_call, tool_result, response
+            Dict with events: thinking, tool_call, tool_result, response, status
         """
         iteration = 0
         tools = self.tool_registry.get_openai_functions()
 
+        # Emit initial status
+        yield {
+            "type": "status",
+            "status": "thinking",
+            "message": "Analyzing your request..."
+        }
+
         while iteration < self.max_iterations:
             iteration += 1
+
+            # Emit status update
+            yield {
+                "type": "status",
+                "status": "generating_response",
+                "message": f"Processing (iteration {iteration})...",
+                "progress": min(int((iteration / self.max_iterations) * 100), 90)
+            }
 
             # Stream the response
             stream = self.openai_service.create_streaming_completion(
@@ -201,6 +256,14 @@ class AgentService:
                     function_name = tool_call_data["function"]["name"]
                     function_args = json.loads(tool_call_data["function"]["arguments"])
 
+                    # Emit status - calling tool
+                    yield {
+                        "type": "status",
+                        "status": "calling_tool",
+                        "message": f"Using {function_name}...",
+                        "tool_name": function_name
+                    }
+
                     # Emit tool call event
                     yield {
                         "type": "tool_call",
@@ -217,6 +280,14 @@ class AgentService:
                         message_id=message_id,
                     )
                     execution_time = int((time.time() - start_time) * 1000)
+
+                    # Emit status - processing results
+                    yield {
+                        "type": "status",
+                        "status": "processing_results",
+                        "message": f"Processing results from {function_name}...",
+                        "tool_name": function_name
+                    }
 
                     # Emit tool result event
                     yield {
@@ -235,6 +306,12 @@ class AgentService:
             else:
                 # No tool calls, final response
                 yield {
+                    "type": "status",
+                    "status": "completed",
+                    "message": "Response complete",
+                    "progress": 100
+                }
+                yield {
                     "type": "final_response",
                     "content": "".join(content_chunks),
                     "iterations": iteration,
@@ -242,6 +319,11 @@ class AgentService:
                 return
 
         # Max iterations reached
+        yield {
+            "type": "status",
+            "status": "error",
+            "message": "Maximum iterations reached"
+        }
         yield {
             "type": "error",
             "content": "Maximum iterations reached",

@@ -1,6 +1,7 @@
 """Base tool class for defining agent tools."""
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -52,10 +53,10 @@ class BaseTool(ABC):
 
     def to_openai_function(self) -> Dict[str, Any]:
         """
-        Convert tool to OpenAI function format.
+        Convert tool to OpenAI Chat Completions API function format.
 
         Returns:
-            Dict in OpenAI function calling format
+            Dict in OpenAI Chat Completions function calling format
         """
         schema = self.get_schema()
         return {
@@ -65,6 +66,21 @@ class BaseTool(ABC):
                 "description": self.description,
                 "parameters": schema,
             },
+        }
+
+    def to_responses_api_tool(self) -> Dict[str, Any]:
+        """
+        Convert tool to OpenAI Responses API tool format.
+
+        Returns:
+            Dict in OpenAI Responses API format
+        """
+        schema = self.get_schema()
+        return {
+            "type": "function",
+            "name": self.name,
+            "description": self.description,
+            "parameters": schema,
         }
 
 
@@ -87,8 +103,12 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def get_openai_functions(self) -> List[Dict[str, Any]]:
-        """Get all tools in OpenAI function calling format."""
+        """Get all tools in OpenAI Chat Completions function calling format."""
         return [tool.to_openai_function() for tool in self._tools.values()]
+
+    def get_responses_api_tools(self) -> List[Dict[str, Any]]:
+        """Get all tools in OpenAI Responses API format."""
+        return [tool.to_responses_api_tool() for tool in self._tools.values()]
 
 
 # Global tool registry
