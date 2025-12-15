@@ -109,6 +109,7 @@ async def send_message(
             user_message=user_message,
             assistant_message=assistant_message,
             status_updates=agent_result.get("status_updates", []),
+            thoughts=agent_result.get("thoughts", []),
         )
 
     except HTTPException:

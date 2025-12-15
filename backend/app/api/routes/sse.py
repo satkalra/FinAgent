@@ -1,16 +1,17 @@
 """SSE (Server-Sent Events) endpoints for real-time streaming."""
 import logging
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.config import settings
+from app.core.sse_manager import sse_manager
+from app.database import get_db
+from app.models import MessageRole
+from app.prompts.prompt_utils import render_prompt
+from app.services.agent_service import agent_service
+from app.services.conversation_service import conversation_service
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db
-from app.services.conversation_service import conversation_service
-from app.services.agent_service import agent_service
-from app.core.sse_manager import sse_manager
-from app.models import MessageRole
-from app.config import settings
-from app.prompts.prompt_utils import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,28 @@ async def stream_chat(
                         },
                         event="answer",
                     )
+                elif event_type == "thought":
+                    # Emit thought event with detailed thinking steps
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "thought",
+                            "iteration": event.get("iteration"),
+                            "thought": event.get("thought"),
+                            "action": event.get("action"),
+                        },
+                        event="thought",
+                    )
+                elif event_type == "status":
+                    # Pass through status events from agent
+                    yield sse_manager.format_sse(
+                        {
+                            "type": "status",
+                            "status": event.get("status"),
+                            "message": event.get("message"),
+                            "progress": event.get("progress"),
+                        },
+                        event="status",
+                    )
                 elif event_type == "tool_call":
                     yield sse_manager.format_sse(
                         {
@@ -134,7 +157,7 @@ async def stream_chat(
                         },
                         event="status",
                     )
-                elif event_type == "final_response":
+                elif event_type == "final_answer":
                     final_response_text = event.get("content", "")
                     yield sse_manager.format_sse(
                         {
@@ -195,8 +218,8 @@ async def stream_chat(
                 event="status"
             )
 
-        except Exception as e:
-            logger.error(f"Error in chat stream: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Error in chat stream: %s", e)
             yield sse_manager.format_sse(
                 {"error": str(e)},
                 event="error"

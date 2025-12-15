@@ -75,6 +75,14 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
+class ThoughtStep(BaseModel):
+    """Schema for intermediate thinking step."""
+
+    iteration: int
+    thought: str
+    action: str
+
+
 class ChatResponse(BaseModel):
     """Schema for chat response."""
 
@@ -83,3 +91,4 @@ class ChatResponse(BaseModel):
     assistant_message: MessageResponse
     status: Optional[AgentStatus] = AgentStatus.COMPLETED
     status_updates: List[StatusUpdate] = []
+    thoughts: List[ThoughtStep] = []

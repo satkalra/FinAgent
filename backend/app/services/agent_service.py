@@ -1,25 +1,60 @@
-"""Agent service implementing React (Reason + Act) pattern."""
-import logging
+"""Agent service implementing React (Reason + Act) pattern with intermediate thinking."""
 import json
+import logging
+import re
 import time
-from typing import List, Dict, Any, Optional, AsyncIterator
-from openai.types.chat import ChatCompletionMessageParam
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from app.database import AsyncSession
+from app.models import Message, ToolExecution
+from app.schemas.message import AgentStatus, StatusUpdate
 from app.services.openai_service import openai_service
 from app.tools import tool_registry
-from app.database import AsyncSession
-from app.models import ToolExecution, Message
-from app.schemas.message import AgentStatus, StatusUpdate
+from openai.types.chat import ChatCompletionMessageParam
 
 logger = logging.getLogger(__name__)
 
 
 class AgentService:
-    """Service implementing React Agent pattern with tool execution."""
+    """Service implementing React Agent pattern with tool execution and intermediate thinking."""
 
     def __init__(self):
         self.openai_service = openai_service
         self.tool_registry = tool_registry
         self.max_iterations = 10  # Prevent infinite loops
+
+    def _extract_json_from_response(self, content: str) -> Optional[Dict[str, Any]]:
+        """Extract JSON from model response, handling markdown code blocks."""
+        if not content:
+            return None
+
+        # Try to parse as direct JSON first
+        try:
+            return json.loads(content.strip())
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract JSON from markdown code block
+        json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        matches = re.findall(json_pattern, content, re.DOTALL)
+        if matches:
+            try:
+                return json.loads(matches[0])
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find JSON object without code block
+        json_obj_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_obj_pattern, content, re.DOTALL)
+        for match in matches:
+            try:
+                obj = json.loads(match)
+                if 'thought' in obj and 'action' in obj:
+                    return obj
+            except json.JSONDecodeError:
+                continue
+
+        return None
 
     async def execute_agent(
         self,
@@ -28,7 +63,7 @@ class AgentService:
         message_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Execute agent with React loop: Reason → Act → Observe.
+        Execute agent with React loop using structured JSON responses.
 
         Args:
             messages: Conversation history
@@ -36,13 +71,14 @@ class AgentService:
             message_id: Message ID for associating tool executions
 
         Returns:
-            Dict with final response, tool execution logs, and status updates
+            Dict with final response, tool execution logs, status updates, and thoughts
         """
         tool_executions = []
         status_updates = []
+        thoughts = []  # Track all intermediate thoughts
         iteration = 0
 
-        # Get available tools
+        # Get available tools (but don't pass to model - we want pure JSON responses)
         tools = self.tool_registry.get_openai_functions()
 
         # Initial status
@@ -58,97 +94,115 @@ class AgentService:
             # Update status - generating response
             status_updates.append(StatusUpdate(
                 status=AgentStatus.GENERATING_RESPONSE,
-                message=f"Processing (iteration {iteration})...",
+                message=f"Reasoning (step {iteration})...",
                 progress=min(int((iteration / self.max_iterations) * 100), 90)
             ))
 
-            # Call OpenAI with function calling
+            # Call OpenAI for structured JSON response (no function calling)
             response = await self.openai_service.create_chat_completion(
                 messages=messages,
-                tools=tools if tools else None,
+                tools=None,  # Don't use function calling, we want JSON
                 stream=False,
             )
 
-            assistant_message = response.choices[0].message
+            assistant_content = response.choices[0].message.content or ""
 
-            # Check if the model wants to call a function
-            if assistant_message.tool_calls:
-                # Add assistant message with tool calls to conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": assistant_message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": tc.type,
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            }
-                        }
-                        for tc in assistant_message.tool_calls
-                    ]
-                })
+            # Parse JSON response
+            parsed_response = self._extract_json_from_response(assistant_content)
 
-                # Execute each tool call
-                for tool_call in assistant_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-
-                    logger.info(f"Calling tool: {function_name} with args: {function_args}")
-
-                    # Update status - calling tool
-                    status_updates.append(StatusUpdate(
-                        status=AgentStatus.CALLING_TOOL,
-                        message=f"Using {function_name}...",
-                        tool_name=function_name
-                    ))
-
-                    # Execute tool
-                    start_time = time.time()
-                    tool_result = await self._execute_tool(
-                        function_name,
-                        function_args,
-                        db=db,
-                        message_id=message_id,
-                    )
-                    execution_time = int((time.time() - start_time) * 1000)
-
-                    # Track execution
-                    tool_executions.append({
-                        "tool_name": function_name,
-                        "tool_input": function_args,
-                        "tool_output": tool_result,
-                        "execution_time_ms": execution_time,
-                    })
-
-                    # Update status - processing results
-                    status_updates.append(StatusUpdate(
-                        status=AgentStatus.PROCESSING_RESULTS,
-                        message=f"Processing results from {function_name}...",
-                        tool_name=function_name
-                    ))
-
-                    # Add tool result to conversation
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": tool_result,
-                    })
-
-            else:
-                # No more tool calls, return final response
+            if not parsed_response:
+                # Fallback: treat as final answer if JSON parsing fails
+                logger.warning(f"Failed to parse JSON response: {assistant_content[:200]}")
                 status_updates.append(StatusUpdate(
                     status=AgentStatus.COMPLETED,
                     message="Response complete",
                     progress=100
                 ))
                 return {
-                    "content": assistant_message.content or "",
+                    "content": assistant_content,
                     "tool_executions": tool_executions,
                     "status_updates": status_updates,
+                    "thoughts": thoughts,
                     "iterations": iteration,
                 }
+
+            # Extract fields
+            thought = parsed_response.get("thought", "")
+            action = parsed_response.get("action", "")
+            action_input = parsed_response.get("action_input", {})
+
+            # Track the thought
+            if thought:
+                thoughts.append({
+                    "iteration": iteration,
+                    "thought": thought,
+                    "action": action,
+                })
+                logger.info(f"Thought: {thought}")
+
+            # Add assistant message to conversation
+            messages.append({
+                "role": "assistant",
+                "content": assistant_content,
+            })
+
+            # Check if final answer
+            if action == "final_answer":
+                final_answer = action_input.get("answer", "")
+                status_updates.append(StatusUpdate(
+                    status=AgentStatus.COMPLETED,
+                    message="Response complete",
+                    progress=100
+                ))
+                return {
+                    "content": final_answer,
+                    "tool_executions": tool_executions,
+                    "status_updates": status_updates,
+                    "thoughts": thoughts,
+                    "iterations": iteration,
+                }
+
+            # Execute tool if action is a tool name
+            if action and action != "final_answer":
+                # Update status - calling tool
+                status_updates.append(StatusUpdate(
+                    status=AgentStatus.CALLING_TOOL,
+                    message=f"Using {action}...",
+                    tool_name=action
+                ))
+
+                logger.info(f"Calling tool: {action} with args: {action_input}")
+
+                # Execute tool
+                start_time = time.time()
+                tool_result = await self._execute_tool(
+                    action,
+                    action_input,
+                    db=db,
+                    message_id=message_id,
+                )
+                execution_time = int((time.time() - start_time) * 1000)
+
+                # Track execution
+                tool_executions.append({
+                    "tool_name": action,
+                    "tool_input": action_input,
+                    "tool_output": tool_result,
+                    "execution_time_ms": execution_time,
+                })
+
+                # Update status - processing results
+                status_updates.append(StatusUpdate(
+                    status=AgentStatus.PROCESSING_RESULTS,
+                    message=f"Processing results from {action}...",
+                    tool_name=action
+                ))
+
+                # Add tool result as user message (observation)
+                messages.append({
+                    "role": "user",
+                    "content": f"Tool result from {action}:\n{tool_result}",
+                })
 
         # Max iterations reached
         logger.warning(f"Agent reached max iterations ({self.max_iterations})")
@@ -157,9 +211,10 @@ class AgentService:
             message="Maximum iterations reached"
         ))
         return {
-            "content": "I apologize, but I've reached the maximum number of tool executions. Please try rephrasing your question.",
+            "content": "I apologize, but I've reached the maximum number of reasoning steps. Please try rephrasing your question or breaking it into smaller parts.",
             "tool_executions": tool_executions,
             "status_updates": status_updates,
+            "thoughts": thoughts,
             "iterations": iteration,
         }
 
@@ -170,10 +225,10 @@ class AgentService:
         message_id: Optional[int] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Execute agent with streaming responses.
+        Execute agent with streaming responses and intermediate thinking.
 
         Yields:
-            Dict with events: thinking, tool_call, tool_result, response, status
+            Dict with events: thought, tool_call, tool_result, final_answer, status
         """
         iteration = 0
         tools = self.tool_registry.get_openai_functions()
@@ -192,20 +247,18 @@ class AgentService:
             yield {
                 "type": "status",
                 "status": "generating_response",
-                "message": f"Processing (iteration {iteration})...",
+                "message": f"Reasoning (step {iteration})...",
                 "progress": min(int((iteration / self.max_iterations) * 100), 90)
             }
 
             # Stream the response
             stream = self.openai_service.create_streaming_completion(
                 messages=messages,
-                tools=tools if tools else None,
+                tools=None,  # No function calling for structured JSON
             )
 
-            # Collect tool calls and content
+            # Collect content chunks
             content_chunks = []
-            tool_calls_data = []
-            current_tool_call = None
 
             async for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
@@ -213,7 +266,7 @@ class AgentService:
                 if not delta:
                     continue
 
-                # Handle content (thinking/response)
+                # Handle content
                 if delta.content:
                     content_chunks.append(delta.content)
                     yield {
@@ -221,90 +274,50 @@ class AgentService:
                         "content": delta.content,
                     }
 
-                # Handle tool calls
-                if delta.tool_calls:
-                    for tc_delta in delta.tool_calls:
-                        if tc_delta.index is not None:
-                            # New tool call or update existing
-                            while len(tool_calls_data) <= tc_delta.index:
-                                tool_calls_data.append({
-                                    "id": "",
-                                    "type": "function",
-                                    "function": {"name": "", "arguments": ""}
-                                })
+            # Parse the complete response
+            full_content = "".join(content_chunks)
+            parsed_response = self._extract_json_from_response(full_content)
 
-                            if tc_delta.id:
-                                tool_calls_data[tc_delta.index]["id"] = tc_delta.id
+            if not parsed_response:
+                # Fallback to final answer
+                yield {
+                    "type": "final_answer",
+                    "content": full_content,
+                    "iterations": iteration,
+                }
+                return
 
-                            if tc_delta.function:
-                                if tc_delta.function.name:
-                                    tool_calls_data[tc_delta.index]["function"]["name"] = tc_delta.function.name
-                                if tc_delta.function.arguments:
-                                    tool_calls_data[tc_delta.index]["function"]["arguments"] += tc_delta.function.arguments
+            # Extract fields
+            thought = parsed_response.get("thought", "")
+            action = parsed_response.get("action", "")
+            action_input = parsed_response.get("action_input", {})
 
-            # Process tool calls if any
-            if tool_calls_data:
-                # Add assistant message to conversation
-                messages.append({
-                    "role": "assistant",
-                    "content": "".join(content_chunks) or None,
-                    "tool_calls": tool_calls_data,
-                })
+            # Emit thought with status update
+            if thought:
+                # Send status event with the thought content
+                yield {
+                    "type": "status",
+                    "status": "thinking",
+                    "message": thought
+                }
+                
+                # Also emit thought event for detailed info
+                yield {
+                    "type": "thought",
+                    "iteration": iteration,
+                    "thought": thought,
+                    "action": action,
+                }
 
-                # Execute tools
-                for tool_call_data in tool_calls_data:
-                    function_name = tool_call_data["function"]["name"]
-                    function_args = json.loads(tool_call_data["function"]["arguments"])
+            # Add assistant message to conversation
+            messages.append({
+                "role": "assistant",
+                "content": full_content,
+            })
 
-                    # Emit status - calling tool
-                    yield {
-                        "type": "status",
-                        "status": "calling_tool",
-                        "message": f"Using {function_name}...",
-                        "tool_name": function_name
-                    }
-
-                    # Emit tool call event
-                    yield {
-                        "type": "tool_call",
-                        "tool_name": function_name,
-                        "tool_input": function_args,
-                    }
-
-                    # Execute tool
-                    start_time = time.time()
-                    tool_result = await self._execute_tool(
-                        function_name,
-                        function_args,
-                        db=db,
-                        message_id=message_id,
-                    )
-                    execution_time = int((time.time() - start_time) * 1000)
-
-                    # Emit status - processing results
-                    yield {
-                        "type": "status",
-                        "status": "processing_results",
-                        "message": f"Processing results from {function_name}...",
-                        "tool_name": function_name
-                    }
-
-                    # Emit tool result event
-                    yield {
-                        "type": "tool_result",
-                        "tool_name": function_name,
-                        "tool_output": tool_result,
-                        "execution_time_ms": execution_time,
-                    }
-
-                    # Add tool result to conversation
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_data["id"],
-                        "content": tool_result,
-                    })
-            else:
-                # No tool calls, final response
+            # Check if final answer
+            if action == "final_answer":
+                final_answer = action_input.get("answer", "")
                 yield {
                     "type": "status",
                     "status": "completed",
@@ -312,11 +325,60 @@ class AgentService:
                     "progress": 100
                 }
                 yield {
-                    "type": "final_response",
-                    "content": "".join(content_chunks),
+                    "type": "final_answer",
+                    "content": final_answer,
                     "iterations": iteration,
                 }
                 return
+
+            # Execute tool if action is a tool name
+            if action and action != "final_answer":
+                # Emit status - calling tool
+                yield {
+                    "type": "status",
+                    "status": "calling_tool",
+                    "message": f"Using {action}...",
+                    "tool_name": action
+                }
+
+                # Emit tool call event
+                yield {
+                    "type": "tool_call",
+                    "tool_name": action,
+                    "tool_input": action_input,
+                }
+
+                # Execute tool
+                start_time = time.time()
+                tool_result = await self._execute_tool(
+                    action,
+                    action_input,
+                    db=db,
+                    message_id=message_id,
+                )
+                execution_time = int((time.time() - start_time) * 1000)
+
+                # Emit status - processing results
+                yield {
+                    "type": "status",
+                    "status": "processing_results",
+                    "message": f"Processing results from {action}...",
+                    "tool_name": action
+                }
+
+                # Emit tool result event
+                yield {
+                    "type": "tool_result",
+                    "tool_name": action,
+                    "tool_output": tool_result,
+                    "execution_time_ms": execution_time,
+                }
+
+                # Add tool result as observation
+                messages.append({
+                    "role": "user",
+                    "content": f"Tool result from {action}:\n{tool_result}",
+                })
 
         # Max iterations reached
         yield {
