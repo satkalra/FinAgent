@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import sse
+from app.api.routes import sse, evaluations
 
 from app.config import settings
 
@@ -62,6 +62,7 @@ async def health_check():
 
 # Include routers
 app.include_router(sse.router, prefix="/sse", tags=["sse"])
+app.include_router(evaluations.router, prefix="/evaluations", tags=["evaluations"])
 
 
 if __name__ == "__main__":
