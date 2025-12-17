@@ -1,11 +1,12 @@
 """FastAPI main application for FinAgent."""
+
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import sse
 
 from app.config import settings
-from app.database import init_db
 
 # Configure logging
 logging.basicConfig(
@@ -16,12 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
     logger.info("Starting FinAgent API...")
-    await init_db()
-    logger.info("Database initialized")
     yield
     # Shutdown
     logger.info("Shutting down FinAgent API...")
@@ -62,12 +61,6 @@ async def health_check():
 
 
 # Include routers
-from app.api.routes import chat, conversations, evaluations, analytics, sse
-
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
-app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
-app.include_router(evaluations.router, prefix="/api/v1/evaluations", tags=["evaluations"])
-app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(sse.router, prefix="/sse", tags=["sse"])
 
 

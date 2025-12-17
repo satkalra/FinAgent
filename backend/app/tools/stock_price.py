@@ -1,7 +1,7 @@
 """Stock price tool for getting stock prices using yfinance."""
+
 import yfinance as yf
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any
 from app.tools.base import BaseTool
 import json
 
@@ -14,11 +14,7 @@ class StockPriceTool(BaseTool):
     display_name = "Stock Price Lookup"
 
     async def execute(
-        self,
-        ticker: str,
-        period: str = "1d",
-        info: bool = True,
-        **kwargs
+        self, ticker: str, period: str = "1d", info: bool = True, **kwargs
     ) -> str:
         """
         Get stock price information.
@@ -42,9 +38,13 @@ class StockPriceTool(BaseTool):
             # Get current price and basic info
             if info:
                 stock_info = stock.info
-                result["current_price"] = stock_info.get("currentPrice") or stock_info.get("regularMarketPrice")
+                result["current_price"] = stock_info.get(
+                    "currentPrice"
+                ) or stock_info.get("regularMarketPrice")
                 result["currency"] = stock_info.get("currency", "USD")
-                result["company_name"] = stock_info.get("longName") or stock_info.get("shortName")
+                result["company_name"] = stock_info.get("longName") or stock_info.get(
+                    "shortName"
+                )
                 result["market_cap"] = stock_info.get("marketCap")
                 result["previous_close"] = stock_info.get("previousClose")
                 result["open"] = stock_info.get("open")

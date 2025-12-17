@@ -1,4 +1,5 @@
 """Utilities for loading and rendering Jinja2 prompt templates."""
+
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional, Dict, Any
@@ -14,9 +15,7 @@ def _get_env(templates_dir: str) -> Environment:
     loader = FileSystemLoader(str(templates_dir))
     return Environment(
         loader=loader,
-        autoescape=select_autoescape(
-            enabled_extensions=("j2", "jinja2", "tpl", "txt")
-        ),
+        autoescape=select_autoescape(enabled_extensions=("j2", "jinja2", "tpl", "txt")),
         trim_blocks=True,
         lstrip_blocks=True,
     )

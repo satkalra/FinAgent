@@ -1,4 +1,5 @@
 """Financial tools for FinAgent."""
+
 from app.tools.base import tool_registry
 from app.tools.stock_price import stock_price_tool
 from app.tools.company_info import company_info_tool

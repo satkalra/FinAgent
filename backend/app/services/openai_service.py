@@ -1,4 +1,5 @@
 """OpenAI service for LLM interactions with function calling."""
+
 import logging
 from typing import List, Dict, Any, Optional, AsyncIterator
 from openai import AsyncOpenAI

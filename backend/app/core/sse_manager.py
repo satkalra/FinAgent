@@ -1,4 +1,5 @@
 """SSE (Server-Sent Events) manager for streaming responses."""
+
 import json
 import logging
 from typing import AsyncIterator, Dict, Any
@@ -24,7 +25,9 @@ class SSEManager:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
     @staticmethod
-    async def stream_events(events: AsyncIterator[Dict[str, Any]]) -> AsyncIterator[str]:
+    async def stream_events(
+        events: AsyncIterator[Dict[str, Any]],
+    ) -> AsyncIterator[str]:
         """
         Stream events as SSE.
 

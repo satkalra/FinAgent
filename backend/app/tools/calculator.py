@@ -1,4 +1,5 @@
 """Calculator tool for financial calculations."""
+
 from typing import Dict, Any
 from app.tools.base import BaseTool
 import json
@@ -17,7 +18,6 @@ class CalculatorTool(BaseTool):
         annual_rate: float,
         years: float,
         monthly_contribution: float = 0.0,
-        **kwargs
     ) -> str:
         """
         Calculate investment returns.
@@ -74,7 +74,9 @@ class CalculatorTool(BaseTool):
                 },
                 "breakdown": {
                     "initial_investment": principal,
-                    "total_monthly_contributions": round(monthly_contribution * months, 2),
+                    "total_monthly_contributions": round(
+                        monthly_contribution * months, 2
+                    ),
                     "interest_earned": round(future_value - total_contributions, 2),
                 },
             }

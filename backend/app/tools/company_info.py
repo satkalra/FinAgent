@@ -1,4 +1,5 @@
 """Company information tool for getting company details."""
+
 import yfinance as yf
 from typing import Dict, Any
 from app.tools.base import BaseTool
@@ -51,11 +52,13 @@ class CompanyInfoTool(BaseTool):
             # Get key executives
             if "companyOfficers" in info and info["companyOfficers"]:
                 for officer in info["companyOfficers"][:5]:  # Top 5 executives
-                    result["key_executives"].append({
-                        "name": officer.get("name"),
-                        "title": officer.get("title"),
-                        "age": officer.get("age"),
-                    })
+                    result["key_executives"].append(
+                        {
+                            "name": officer.get("name"),
+                            "title": officer.get("title"),
+                            "age": officer.get("age"),
+                        }
+                    )
 
             return json.dumps(result, indent=2)
 

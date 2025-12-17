@@ -1,4 +1,5 @@
 """SSE (Server-Sent Events) endpoints for real-time streaming."""
+
 import json
 import logging
 from typing import Any, Dict, List
@@ -17,7 +18,9 @@ router = APIRouter()
 @router.get("/chat")
 async def stream_chat(
     message: str = Query(..., min_length=1),
-    history: str | None = Query(default=None, description="JSON encoded prior messages"),
+    history: str | None = Query(
+        default=None, description="JSON encoded prior messages"
+    ),
 ):
     """Stream chat responses over SSE without any persistence layer."""
 
@@ -25,7 +28,9 @@ async def stream_chat(
         """Generate SSE events for the chat stream."""
         try:
             try:
-                parsed_history: List[Dict[str, Any]] = json.loads(history) if history else []
+                parsed_history: List[Dict[str, Any]] = (
+                    json.loads(history) if history else []
+                )
                 if not isinstance(parsed_history, list):
                     parsed_history = []
             except json.JSONDecodeError:
@@ -38,16 +43,22 @@ async def stream_chat(
                 content = item.get("content")
                 if not content:
                     continue
-                sanitized_history.append({
-                    "role": item.get("role", "user"),
-                    "content": content,
-                })
+                sanitized_history.append(
+                    {
+                        "role": item.get("role", "user"),
+                        "content": content,
+                    }
+                )
 
             system_message = {
                 "role": "system",
                 "content": render_prompt("fin_react_agent"),
             }
-            message_history = [system_message, *sanitized_history, {"role": "user", "content": message}]
+            message_history = [
+                system_message,
+                *sanitized_history,
+                {"role": "user", "content": message},
+            ]
 
             response_content_chunks: List[str] = []
             final_response_text = ""
@@ -94,7 +105,9 @@ async def stream_chat(
                         event="status",
                     )
                 elif event_type == "tool_call":
-                    display_name = event.get("tool_name") or event.get("tool_internal_name")
+                    display_name = event.get("tool_name") or event.get(
+                        "tool_internal_name"
+                    )
                     yield sse_manager.format_sse(
                         {
                             "type": "status",
@@ -107,7 +120,9 @@ async def stream_chat(
                         event="status",
                     )
                 elif event_type == "tool_result":
-                    display_name = event.get("tool_name") or event.get("tool_internal_name")
+                    display_name = event.get("tool_name") or event.get(
+                        "tool_internal_name"
+                    )
                     yield sse_manager.format_sse(
                         {
                             "type": "status",
@@ -136,7 +151,9 @@ async def stream_chat(
                         {
                             "type": "status",
                             "status": "error",
-                            "message": event.get("content") or event.get("error") or "Unknown error",
+                            "message": event.get("content")
+                            or event.get("error")
+                            or "Unknown error",
                         },
                         event="status",
                     )
@@ -148,15 +165,12 @@ async def stream_chat(
                     "status": "complete",
                     "message": "Streaming complete",
                 },
-                event="status"
+                event="status",
             )
 
         except Exception as e:  # pylint: disable=broad-except
             logger.error("Error in chat stream: %s", e)
-            yield sse_manager.format_sse(
-                {"error": str(e)},
-                event="error"
-            )
+            yield sse_manager.format_sse({"error": str(e)}, event="error")
 
     return StreamingResponse(
         event_generator(),

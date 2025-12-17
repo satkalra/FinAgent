@@ -1,4 +1,5 @@
 """Agent service implementing React (Reason + Act) pattern with intermediate thinking."""
+
 import json
 import logging
 import re
@@ -32,7 +33,7 @@ class AgentService:
             pass
 
         # Try to extract JSON from markdown code block
-        json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        json_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
         matches = re.findall(json_pattern, content, re.DOTALL)
         if matches:
             try:
@@ -41,12 +42,12 @@ class AgentService:
                 pass
 
         # Try to find JSON object without code block
-        json_obj_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        json_obj_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
         matches = re.findall(json_obj_pattern, content, re.DOTALL)
         for match in matches:
             try:
                 obj = json.loads(match)
-                if 'thought' in obj and 'action' in obj:
+                if "thought" in obj and "action" in obj:
                     return obj
             except json.JSONDecodeError:
                 continue
@@ -83,25 +84,25 @@ class AgentService:
         thoughts = []  # Track all intermediate thoughts
         iteration = 0
 
-        # Get available tools (but don't pass to model - we want pure JSON responses)
-        tools = self.tool_registry.get_openai_functions()
-
         # Initial status
-        status_updates.append(StatusUpdate(
-            status=AgentStatus.THINKING,
-            message="Analyzing your request..."
-        ))
+        status_updates.append(
+            StatusUpdate(
+                status=AgentStatus.THINKING, message="Analyzing your request..."
+            )
+        )
 
         while iteration < self.max_iterations:
             iteration += 1
             logger.info(f"Agent iteration {iteration}")
 
             # Update status - generating response
-            status_updates.append(StatusUpdate(
-                status=AgentStatus.GENERATING_RESPONSE,
-                message=f"Reasoning (step {iteration})...",
-                progress=min(int((iteration / self.max_iterations) * 100), 90)
-            ))
+            status_updates.append(
+                StatusUpdate(
+                    status=AgentStatus.GENERATING_RESPONSE,
+                    message=f"Reasoning (step {iteration})...",
+                    progress=min(int((iteration / self.max_iterations) * 100), 90),
+                )
+            )
 
             # Call OpenAI for structured JSON response (no function calling)
             response = await self.openai_service.create_chat_completion(
@@ -117,12 +118,16 @@ class AgentService:
 
             if not parsed_response:
                 # Fallback: treat as final answer if JSON parsing fails
-                logger.warning(f"Failed to parse JSON response: {assistant_content[:200]}")
-                status_updates.append(StatusUpdate(
-                    status=AgentStatus.COMPLETED,
-                    message="Response complete",
-                    progress=100
-                ))
+                logger.warning(
+                    f"Failed to parse JSON response: {assistant_content[:200]}"
+                )
+                status_updates.append(
+                    StatusUpdate(
+                        status=AgentStatus.COMPLETED,
+                        message="Response complete",
+                        progress=100,
+                    )
+                )
                 return {
                     "content": assistant_content,
                     "tool_executions": tool_executions,
@@ -141,27 +146,33 @@ class AgentService:
 
             # Track the thought
             if thought:
-                thoughts.append({
-                    "iteration": iteration,
-                    "thought": thought,
-                    "action": display_action,
-                })
+                thoughts.append(
+                    {
+                        "iteration": iteration,
+                        "thought": thought,
+                        "action": display_action,
+                    }
+                )
                 logger.info(f"Thought: {thought}")
 
             # Add assistant message to conversation
-            messages.append({
-                "role": "assistant",
-                "content": assistant_content,
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_content,
+                }
+            )
 
             # Check if final answer
             if action == "final_answer":
                 final_answer = action_input.get("answer", "")
-                status_updates.append(StatusUpdate(
-                    status=AgentStatus.COMPLETED,
-                    message="Response complete",
-                    progress=100
-                ))
+                status_updates.append(
+                    StatusUpdate(
+                        status=AgentStatus.COMPLETED,
+                        message="Response complete",
+                        progress=100,
+                    )
+                )
                 return {
                     "content": final_answer,
                     "tool_executions": tool_executions,
@@ -174,11 +185,13 @@ class AgentService:
             if action and action != "final_answer":
                 tool_display_name = display_action or action
                 # Update status - calling tool
-                status_updates.append(StatusUpdate(
-                    status=AgentStatus.CALLING_TOOL,
-                    message=f"Using {tool_display_name}...",
-                    tool_name=tool_display_name
-                ))
+                status_updates.append(
+                    StatusUpdate(
+                        status=AgentStatus.CALLING_TOOL,
+                        message=f"Using {tool_display_name}...",
+                        tool_name=tool_display_name,
+                    )
+                )
 
                 logger.info(f"Calling tool: {action} with args: {action_input}")
 
@@ -191,32 +204,37 @@ class AgentService:
                 execution_time = int((time.time() - start_time) * 1000)
 
                 # Track execution
-                tool_executions.append({
-                    "tool_name": tool_display_name,
-                    "tool_input": action_input,
-                    "tool_output": tool_result,
-                    "execution_time_ms": execution_time,
-                })
+                tool_executions.append(
+                    {
+                        "tool_name": tool_display_name,
+                        "tool_input": action_input,
+                        "tool_output": tool_result,
+                        "execution_time_ms": execution_time,
+                    }
+                )
 
                 # Update status - processing results
-                status_updates.append(StatusUpdate(
-                    status=AgentStatus.PROCESSING_RESULTS,
-                    message=f"Processing results from {tool_display_name}...",
-                    tool_name=tool_display_name
-                ))
+                status_updates.append(
+                    StatusUpdate(
+                        status=AgentStatus.PROCESSING_RESULTS,
+                        message=f"Processing results from {tool_display_name}...",
+                        tool_name=tool_display_name,
+                    )
+                )
 
                 # Add tool result as user message (observation)
-                messages.append({
-                    "role": "user",
-                    "content": f"Tool result from {tool_display_name}:\n{tool_result}",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Tool result from {tool_display_name}:\n{tool_result}",
+                    }
+                )
 
         # Max iterations reached
         logger.warning(f"Agent reached max iterations ({self.max_iterations})")
-        status_updates.append(StatusUpdate(
-            status=AgentStatus.ERROR,
-            message="Maximum iterations reached"
-        ))
+        status_updates.append(
+            StatusUpdate(status=AgentStatus.ERROR, message="Maximum iterations reached")
+        )
         return {
             "content": "I apologize, but I've reached the maximum number of reasoning steps. Please try rephrasing your question or breaking it into smaller parts.",
             "tool_executions": tool_executions,
@@ -236,13 +254,12 @@ class AgentService:
             Dict with events: thought, tool_call, tool_result, final_answer, status
         """
         iteration = 0
-        tools = self.tool_registry.get_openai_functions()
 
         # Emit initial status
         yield {
             "type": "status",
             "status": "thinking",
-            "message": "Analyzing your request..."
+            "message": "Analyzing your request...",
         }
 
         while iteration < self.max_iterations:
@@ -253,7 +270,7 @@ class AgentService:
                 "type": "status",
                 "status": "generating_response",
                 "message": f"Reasoning (step {iteration})...",
-                "progress": min(int((iteration / self.max_iterations) * 100), 90)
+                "progress": min(int((iteration / self.max_iterations) * 100), 90),
             }
 
             # Stream the response
@@ -303,12 +320,8 @@ class AgentService:
             # Emit thought with status update
             if thought:
                 # Send status event with the thought content
-                yield {
-                    "type": "status",
-                    "status": "thinking",
-                    "message": thought
-                }
-                
+                yield {"type": "status", "status": "thinking", "message": thought}
+
                 # Also emit thought event for detailed info
                 yield {
                     "type": "thought",
@@ -318,10 +331,12 @@ class AgentService:
                 }
 
             # Add assistant message to conversation
-            messages.append({
-                "role": "assistant",
-                "content": full_content,
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": full_content,
+                }
+            )
 
             # Check if final answer
             if action == "final_answer":
@@ -330,7 +345,7 @@ class AgentService:
                     "type": "status",
                     "status": "completed",
                     "message": "Response complete",
-                    "progress": 100
+                    "progress": 100,
                 }
                 yield {
                     "type": "final_answer",
@@ -386,16 +401,18 @@ class AgentService:
                 }
 
                 # Add tool result as observation
-                messages.append({
-                    "role": "user",
-                    "content": f"Tool result from {tool_display_name}:\n{tool_result}",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Tool result from {tool_display_name}:\n{tool_result}",
+                    }
+                )
 
         # Max iterations reached
         yield {
             "type": "status",
             "status": "error",
-            "message": "Maximum iterations reached"
+            "message": "Maximum iterations reached",
         }
         yield {
             "type": "error",

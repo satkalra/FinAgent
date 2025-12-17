@@ -1,4 +1,5 @@
 """Financial ratios tool for calculating key financial metrics."""
+
 import yfinance as yf
 from typing import Dict, Any
 from app.tools.base import BaseTool
