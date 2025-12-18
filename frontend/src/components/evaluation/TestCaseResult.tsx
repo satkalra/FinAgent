@@ -97,11 +97,21 @@ export default function TestCaseResult({ result }: TestCaseResultProps) {
           <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
             <div>
               <h4 className="text-sm font-medium text-gray-700 mb-2">
-                Expected Tool
+                Expected Tool{Array.isArray(result.expected_tool) && result.expected_tool.length > 1 ? 's' : ''}
               </h4>
-              <code className="text-xs bg-gray-100 px-2 py-1 rounded">
-                {result.expected_tool}
-              </code>
+              <div className="flex flex-wrap gap-2">
+                {Array.isArray(result.expected_tool) ? (
+                  result.expected_tool.map((tool, idx) => (
+                    <code key={idx} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                      {tool}
+                    </code>
+                  ))
+                ) : (
+                  <code className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                    {result.expected_tool}
+                  </code>
+                )}
+              </div>
             </div>
 
             <div>
@@ -110,18 +120,25 @@ export default function TestCaseResult({ result }: TestCaseResultProps) {
               </h4>
               <div className="flex flex-wrap gap-2">
                 {result.actual_tools.length > 0 ? (
-                  result.actual_tools.map((tool, idx) => (
-                    <code
-                      key={idx}
-                      className={`text-xs px-2 py-1 rounded ${
-                        tool === result.expected_tool
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {tool}
-                    </code>
-                  ))
+                  result.actual_tools.map((tool, idx) => {
+                    const expectedTools = Array.isArray(result.expected_tool)
+                      ? result.expected_tool
+                      : [result.expected_tool];
+                    const isExpected = expectedTools.includes(tool);
+
+                    return (
+                      <code
+                        key={idx}
+                        className={`text-xs px-2 py-1 rounded ${
+                          isExpected
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {tool}
+                      </code>
+                    );
+                  })
                 ) : (
                   <span className="text-sm text-gray-500 italic">No tools called</span>
                 )}

@@ -108,8 +108,8 @@ def validate_test_case(row: dict, line_num: int) -> TestCase:
     if not query:
         raise ValueError("query cannot be empty")
 
-    expected_tool = row.get('expected_tool', '').strip()
-    if not expected_tool:
+    expected_tool_str = row.get('expected_tool', '').strip()
+    if not expected_tool_str:
         raise ValueError("expected_tool cannot be empty")
 
     expected_args_str = row.get('expected_args', '').strip()
@@ -120,14 +120,53 @@ def validate_test_case(row: dict, line_num: int) -> TestCase:
     if not expected_response_contains:
         raise ValueError("expected_response_contains cannot be empty")
 
-    # Parse expected_args as JSON
+    # Parse expected_tool - can be string or JSON array
+    expected_tool = expected_tool_str
+    if expected_tool_str.startswith('['):
+        # Parse as JSON array
+        try:
+            expected_tool = json.loads(expected_tool_str)
+            if not isinstance(expected_tool, list):
+                raise ValueError("expected_tool array must be a JSON array")
+            if not all(isinstance(t, str) for t in expected_tool):
+                raise ValueError("All items in expected_tool array must be strings")
+            if len(expected_tool) == 0:
+                raise ValueError("expected_tool array cannot be empty")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"expected_tool array must be valid JSON: {str(e)}")
+
+    # Parse expected_args - can be dict or JSON array of dicts
     try:
         expected_args = json.loads(expected_args_str)
     except json.JSONDecodeError as e:
         raise ValueError(f"expected_args must be valid JSON: {str(e)}")
 
-    if not isinstance(expected_args, dict):
-        raise ValueError("expected_args must be a JSON object (dict), not a list or primitive")
+    # Validate expected_args structure
+    if isinstance(expected_args, dict):
+        # Single dict is valid
+        pass
+    elif isinstance(expected_args, list):
+        # List of dicts
+        if len(expected_args) == 0:
+            raise ValueError("expected_args array cannot be empty")
+        if not all(isinstance(arg, dict) for arg in expected_args):
+            raise ValueError("All items in expected_args array must be JSON objects (dicts)")
+    else:
+        raise ValueError("expected_args must be a JSON object or array of objects")
+
+    # Validate that tool and args structures match
+    is_tool_list = isinstance(expected_tool, list)
+    is_args_list = isinstance(expected_args, list)
+
+    if is_tool_list != is_args_list:
+        raise ValueError(
+            "expected_tool and expected_args must both be single values or both be arrays"
+        )
+
+    if is_tool_list and is_args_list and len(expected_tool) != len(expected_args):
+        raise ValueError(
+            f"Number of tools ({len(expected_tool)}) must match number of arg objects ({len(expected_args)})"
+        )
 
     # Create TestCase object
     return TestCase(

@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import ChatInterface from './components/chat/ChatInterface';
+import { ChatInterface } from './components/chat/ChatInterface';
 import EvaluationPage from './pages/EvaluationPage';
 
 function Navigation() {

@@ -1,7 +1,7 @@
 """Pydantic schemas for evaluation system."""
 
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Literal
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Dict, Any, Optional, Literal, Union
 
 
 class TestCase(BaseModel):
@@ -9,12 +9,39 @@ class TestCase(BaseModel):
 
     test_id: str = Field(..., description="Unique identifier for the test case")
     query: str = Field(..., description="User query to test")
-    expected_tool: str = Field(..., description="Expected tool name (internal name)")
-    expected_args: Dict[str, Any] = Field(..., description="Expected tool arguments")
+    expected_tool: Union[str, List[str]] = Field(
+        ...,
+        description="Expected tool name(s) - single string or list of strings"
+    )
+    expected_args: Union[Dict[str, Any], List[Dict[str, Any]]] = Field(
+        ...,
+        description="Expected tool arguments - single dict or list of dicts matching tools"
+    )
     expected_response_contains: str = Field(
         ...,
         description="Keywords/phrases that should appear in response"
     )
+
+    @field_validator('expected_args')
+    @classmethod
+    def validate_args_match_tools(cls, v, info):
+        """Validate that args structure matches tools structure."""
+        if 'expected_tool' in info.data:
+            expected_tool = info.data['expected_tool']
+            is_tool_list = isinstance(expected_tool, list)
+            is_args_list = isinstance(v, list)
+
+            if is_tool_list != is_args_list:
+                raise ValueError(
+                    "expected_tool and expected_args must both be single values or both be lists"
+                )
+
+            if is_tool_list and is_args_list and len(expected_tool) != len(v):
+                raise ValueError(
+                    f"Number of tools ({len(expected_tool)}) must match number of arg dicts ({len(v)})"
+                )
+
+        return v
 
 
 class ToolCall(BaseModel):
@@ -43,7 +70,7 @@ class EvaluationResult(BaseModel):
 
     test_id: str = Field(..., description="Test case identifier")
     query: str = Field(..., description="User query that was tested")
-    expected_tool: str = Field(..., description="Expected tool name")
+    expected_tool: Union[str, List[str]] = Field(..., description="Expected tool name(s)")
     actual_tools: List[str] = Field(..., description="List of tools actually called")
     actual_response: str = Field(..., description="Agent's final response")
     metrics: List[MetricScore] = Field(..., description="Metric scores for this test")

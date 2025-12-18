@@ -2,45 +2,87 @@
 
 import json
 import logging
-from typing import Dict, Any, List, Tuple
+import re
+from typing import Dict, Any, List, Tuple, Optional, Union
 from app.services.openai_service import openai_service
 from app.prompts.prompt_utils import render_prompt
 
 logger = logging.getLogger(__name__)
 
 
+def _extract_json_from_response(content: str) -> Optional[Dict[str, Any]]:
+    """Extract JSON from LLM response, handling markdown code blocks."""
+    if not content:
+        return None
+
+    # Try to parse as direct JSON first
+    try:
+        return json.loads(content.strip())
+    except json.JSONDecodeError:
+        pass
+
+    # Try to extract JSON from markdown code block
+    json_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+    matches = re.findall(json_pattern, content, re.DOTALL)
+    if matches:
+        try:
+            return json.loads(matches[0])
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find JSON object without code block
+    json_obj_pattern = r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"
+    matches = re.findall(json_obj_pattern, content, re.DOTALL)
+    for match in matches:
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+
+    return None
+
+
 class ToolSelectionEvaluator:
     """
-    Evaluates whether the agent selected the correct tool.
+    Evaluates whether the agent selected the correct tool(s).
 
     Scoring:
-    - 1.0: Expected tool was called
-    - 0.0: Expected tool was not called
+    - Single tool: 1.0 if expected tool was called, 0.0 otherwise
+    - Multiple tools: Percentage of expected tools that were called
     """
 
-    def evaluate(self, expected_tool: str, actual_tools: List[str]) -> float:
+    def evaluate(self, expected_tool: Union[str, List[str]], actual_tools: List[str]) -> float:
         """
         Evaluate tool selection accuracy.
 
         Args:
-            expected_tool: Internal name of expected tool
+            expected_tool: Internal name(s) of expected tool(s) - string or list
             actual_tools: List of internal names of tools actually called
 
         Returns:
-            1.0 if expected tool in actual_tools, else 0.0
+            For single tool: 1.0 if expected tool in actual_tools, else 0.0
+            For multiple tools: % of expected tools found (0.0-1.0)
         """
-        if expected_tool in actual_tools:
+        # Convert to list if single tool
+        expected_tools = [expected_tool] if isinstance(expected_tool, str) else expected_tool
+
+        # Count how many expected tools were actually called
+        found_count = sum(1 for tool in expected_tools if tool in actual_tools)
+        score = found_count / len(expected_tools)
+
+        if score == 1.0:
             logger.debug(
-                f"Tool selection PASS: expected '{expected_tool}', "
+                f"Tool selection PASS: expected {expected_tools}, "
                 f"actual {actual_tools}"
             )
-            return 1.0
         else:
+            missing = [t for t in expected_tools if t not in actual_tools]
             logger.debug(
-                f"Tool selection FAIL: expected '{expected_tool}', "
-                f"actual {actual_tools}"
+                f"Tool selection PARTIAL/FAIL: expected {expected_tools}, "
+                f"actual {actual_tools}, missing {missing}, score {score:.2f}"
             )
-            return 0.0
+
+        return score
 
 
 class ArgumentMatchEvaluator:
@@ -48,25 +90,63 @@ class ArgumentMatchEvaluator:
     Evaluates whether tool arguments match expected values.
 
     Scoring:
-    - 1.0: All expected arguments present with matching values
-    - 0.0-0.99: Partial match based on percentage of matching fields
-    - 0.0: No arguments match
+    - Single tool: 0.0-1.0 based on percentage of matching fields
+    - Multiple tools: Average score across all tools
     """
 
     def evaluate(
         self,
-        expected_args: Dict[str, Any],
-        actual_args: Dict[str, Any]
+        expected_args: Union[Dict[str, Any], List[Dict[str, Any]]],
+        actual_args_list: List[Dict[str, Any]]
     ) -> float:
         """
         Evaluate argument match accuracy.
 
         Args:
-            expected_args: Dictionary of expected arguments
-            actual_args: Dictionary of actual arguments from tool call
+            expected_args: Dictionary or list of dictionaries for expected arguments
+            actual_args_list: List of actual argument dictionaries (one per expected tool)
 
         Returns:
             Score from 0.0 to 1.0 based on field-level comparison
+        """
+        # Convert to list if single dict
+        expected_args_list = [expected_args] if isinstance(expected_args, dict) else expected_args
+
+        if len(actual_args_list) != len(expected_args_list):
+            logger.warning(
+                f"Argument count mismatch: expected {len(expected_args_list)}, "
+                f"got {len(actual_args_list)}"
+            )
+            # Pad or truncate to match lengths
+            actual_args_list = (actual_args_list + [{}] * len(expected_args_list))[:len(expected_args_list)]
+
+        # Evaluate each tool's arguments
+        scores = []
+        for i, (expected, actual) in enumerate(zip(expected_args_list, actual_args_list)):
+            score = self._evaluate_single_tool_args(expected, actual, tool_index=i)
+            scores.append(score)
+
+        # Return average score
+        overall_score = sum(scores) / len(scores) if scores else 0.0
+        logger.debug(f"Overall argument match score: {overall_score:.2f} (avg of {scores})")
+        return overall_score
+
+    def _evaluate_single_tool_args(
+        self,
+        expected_args: Dict[str, Any],
+        actual_args: Dict[str, Any],
+        tool_index: int = 0
+    ) -> float:
+        """
+        Evaluate argument match for a single tool.
+
+        Args:
+            expected_args: Dictionary of expected arguments
+            actual_args: Dictionary of actual arguments
+            tool_index: Index of tool being evaluated (for logging)
+
+        Returns:
+            Score from 0.0 to 1.0
         """
         if not expected_args:
             # If no expected args, perfect match
@@ -74,7 +154,7 @@ class ArgumentMatchEvaluator:
 
         if not actual_args:
             # If expected args but no actual args, fail
-            logger.debug("Argument match FAIL: no actual arguments provided")
+            logger.debug(f"Tool {tool_index}: Argument match FAIL - no actual arguments provided")
             return 0.0
 
         matching_fields = 0
@@ -84,24 +164,24 @@ class ArgumentMatchEvaluator:
             actual_value = actual_args.get(key)
 
             if actual_value is None:
-                logger.debug(f"Argument match: missing field '{key}'")
+                logger.debug(f"Tool {tool_index}: missing field '{key}'")
                 continue
 
             if self._values_match(expected_value, actual_value):
                 matching_fields += 1
                 logger.debug(
-                    f"Argument match: field '{key}' matches "
+                    f"Tool {tool_index}: field '{key}' matches "
                     f"(expected={expected_value}, actual={actual_value})"
                 )
             else:
                 logger.debug(
-                    f"Argument match: field '{key}' mismatch "
+                    f"Tool {tool_index}: field '{key}' mismatch "
                     f"(expected={expected_value}, actual={actual_value})"
                 )
 
         score = matching_fields / total_fields
         logger.debug(
-            f"Argument match score: {score:.2f} "
+            f"Tool {tool_index}: Argument match score: {score:.2f} "
             f"({matching_fields}/{total_fields} fields)"
         )
         return score
@@ -211,9 +291,13 @@ class ResponseFaithfulnessEvaluator:
                 temperature=0
             )
 
-            # Parse JSON response
-            response_content = response["content"]
-            result = json.loads(response_content)
+            # Parse JSON response (same pattern as agent_service)
+            response_content = response.choices[0].message.content or ""
+            result = _extract_json_from_response(response_content)
+
+            if not result:
+                logger.error(f"Failed to extract JSON from LLM judge response: {response_content[:200]}")
+                return 0.0, f"Invalid judge response format"
 
             score = float(result.get("score", 0.0))
             explanation = result.get("explanation", "No explanation provided")

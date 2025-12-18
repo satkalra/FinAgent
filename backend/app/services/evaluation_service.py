@@ -128,7 +128,7 @@ class EvaluationService:
 
         # Extract actual tools (map display names to internal names)
         actual_tools = []
-        actual_tool_args = {}
+        tool_args_map = {}  # Map internal_name -> arguments
         tool_outputs = []
 
         for exec in tool_executions:
@@ -140,12 +140,23 @@ class EvaluationService:
             internal_name = self._get_internal_tool_name(display_name)
             actual_tools.append(internal_name)
 
-            # Store arguments for the expected tool
-            if internal_name == test_case.expected_tool:
-                actual_tool_args = tool_input
+            # Store arguments for this tool
+            tool_args_map[internal_name] = tool_input
 
             # Collect tool outputs for faithfulness check
             tool_outputs.append(f"{display_name}: {tool_output}")
+
+        # Extract arguments for expected tools (in order)
+        expected_tools_list = (
+            [test_case.expected_tool] if isinstance(test_case.expected_tool, str)
+            else test_case.expected_tool
+        )
+
+        actual_args_list = []
+        for expected_tool in expected_tools_list:
+            # Get arguments for this expected tool (or empty dict if not found)
+            tool_args = tool_args_map.get(expected_tool, {})
+            actual_args_list.append(tool_args)
 
         # Run evaluators
         metrics = []
@@ -163,7 +174,7 @@ class EvaluationService:
         # 2. Argument Match
         argument_match_score = argument_match_evaluator.evaluate(
             test_case.expected_args,
-            actual_tool_args
+            actual_args_list
         )
         metrics.append(MetricScore(
             metric_name="argument_match",

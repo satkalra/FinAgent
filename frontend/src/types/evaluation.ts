@@ -5,8 +5,8 @@
 export interface TestCase {
   test_id: string;
   query: string;
-  expected_tool: string;
-  expected_args: Record<string, any>;
+  expected_tool: string | string[];
+  expected_args: Record<string, any> | Record<string, any>[];
   expected_response_contains: string;
 }
 
@@ -19,7 +19,7 @@ export interface MetricScore {
 export interface EvaluationResult {
   test_id: string;
   query: string;
-  expected_tool: string;
+  expected_tool: string | string[];
   actual_tools: string[];
   actual_response: string;
   metrics: MetricScore[];
