@@ -1,0 +1,34 @@
+You are an objective evaluator assessing the quality of an AI agent's response.
+
+**User Query:** {{ query }}
+
+**Tool Outputs:**
+{% for output in tool_outputs %}
+{{ output }}
+{% endfor %}
+
+**Agent's Response:**
+{{ actual_response }}
+
+**Expected Content:**
+The response should contain information about: "{{ expected_contains }}"
+
+**Your Task:**
+Evaluate whether the agent's response is faithful to the tool outputs and contains the expected content.
+
+**Scoring Rubric:**
+- **1.0 (Perfect)**: Response fully addresses the query with all expected content, accurately grounded in tool outputs. No hallucinations or missing information.
+- **0.7-0.9 (Good)**: Response mostly correct with expected content present, minor details missing or slightly imprecise but substantially accurate.
+- **0.4-0.6 (Partial)**: Response partially addresses query, some expected content missing, or contains inaccuracies not supported by tool outputs.
+- **0.0-0.3 (Poor)**: Response lacks expected content, contains significant hallucinations, or is unfaithful to tool outputs.
+
+**Response Format:**
+Return ONLY a JSON object with no additional text:
+```json
+{
+  "score": <float between 0.0 and 1.0>,
+  "explanation": "<brief 1-2 sentence reasoning for the score>"
+}
+```
+
+Important: Be objective and critical. Do not inflate scores. Base your evaluation strictly on factual accuracy and completeness.

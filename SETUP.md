@@ -83,7 +83,7 @@ Frontend will start at **http://localhost:5173**
 ```env
 # Required
 OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-5.2
 
 # Optional
 DATABASE_URL=sqlite+aiosqlite:///./finagent.db

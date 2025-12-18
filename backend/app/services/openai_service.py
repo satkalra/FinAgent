@@ -26,6 +26,7 @@ class OpenAIService:
         messages: List[ChatCompletionMessageParam],
         tools: Optional[List[Dict[str, Any]]] = None,
         stream: bool = False,
+        temperature: Optional[float] = None,
     ) -> Any:
         """
         Create a chat completion with optional function calling.
@@ -34,6 +35,7 @@ class OpenAIService:
             messages: List of chat messages
             tools: Optional list of tools/functions available to the model
             stream: Whether to stream the response
+            temperature: Optional temperature for response randomness (0.0-2.0)
 
         Returns:
             Chat completion response or async iterator for streaming
@@ -48,6 +50,9 @@ class OpenAIService:
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = "auto"
+
+            if temperature is not None:
+                kwargs["temperature"] = temperature
 
             response = await self.client.chat.completions.create(**kwargs)
 
