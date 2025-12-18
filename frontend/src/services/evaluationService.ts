@@ -4,7 +4,7 @@
 
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 
-const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000';
+const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL;
 
 export interface EvaluationStreamCallbacks {
   onStatus?: (data: any) => void;

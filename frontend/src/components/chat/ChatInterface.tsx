@@ -24,7 +24,7 @@ export function ChatInterface() {
   }, [messages, currentStatus, latestThoughts]);
 
   const streamSSEMessage = async (content: string, historyMessages: Pick<Message, 'role' | 'content'>[]) => {
-    const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000/sse';
+    const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL;
     const url = `${SSE_BASE_URL}/chat`;
 
     const abortController = new AbortController();
@@ -75,7 +75,7 @@ export function ChatInterface() {
                 };
                 setCurrentStatus(status);
 
-                if (status.status === 'completed' || status.status === 'complete') {
+                if (status.status === 'completed') {
                   setLatestThoughts([]);
 
                   // Create assistant message from streamed content (only once)
@@ -117,9 +117,9 @@ export function ChatInterface() {
 
             // Handle answer events
             if (event.event === 'answer' || data.type === 'answer') {
-              if (data.chunk) {
+              if ('chunk' in data && typeof data.chunk === 'string') {
                 assistantContent += data.chunk;
-              } else if (data.content) {
+              } else if ('content' in data && typeof data.content === 'string') {
                 assistantContent = data.content;
               }
             }
