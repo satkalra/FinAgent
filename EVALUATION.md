@@ -166,6 +166,7 @@ Expected arguments - single JSON object OR array of objects (matching tools orde
 | `get_company_info` | `ticker` | - |
 | `calculate_financial_ratios` | `ticker` | - |
 | `calculate_investment_returns` | `principal`<br>`annual_rate`<br>`years` | `monthly_contribution` |
+| `calculate_stock_returns` | `ticker`<br>`investment_amount` | `years_ago` (e.g., 3 for 3 years ago)<br>`start_date` (YYYY-MM-DD format) |
 
 ---
 

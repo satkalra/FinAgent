@@ -29,8 +29,6 @@ FinAgent is a production-ready AI financial agent that uses the **ReAct pattern*
 
 ✅ **Multi-Tool Queries** - Handle complex queries requiring multiple tool calls
 
-✅ **Production Ready** - Stateless architecture, proper error handling, type safety
-
 ---
 
 ## 🚀 What Can FinAgent Do?
@@ -41,12 +39,14 @@ Ask natural language questions about:
 - **Company Information** - Sector, industry, executives, headquarters
 - **Financial Ratios** - P/E, ROE, ROA, profit margins, debt-to-equity
 - **Investment Calculations** - Compound interest, future value projections
+- **Historical Returns** - Calculate what past investments would be worth today
 
 **Example Queries:**
 - *"What's Apple's current stock price?"*
 - *"Compare AAPL and MSFT financial ratios"*
-- *"If I invest $10,000 at 7% for 20 years, what will I have?"*
-- *"Get Tesla's stock price and company information"* (multi-tool)
+- *"Get Tesla's stock price and company information"*
+- *"If I invested $10,000 in Apple 3 years ago, what would it be worth today?"*
+- *"What blue chip should I invest in today and why?"*
 
 ### 🧪 Agent Evaluation
 Test your agent's performance with CSV datasets:
@@ -71,7 +71,7 @@ Watch the agent work in real-time:
 
 ### Backend
 - **FastAPI** - Modern async Python web framework
-- **OpenAI GPT-4o** - ReAct agent with function calling
+- **OpenAI GPT-5.2** - ReAct agent with function calling
 - **Pydantic** - Data validation and settings
 - **yfinance** - Real-time financial data
 - **SSE** - Server-sent events for streaming
@@ -82,14 +82,9 @@ Watch the agent work in real-time:
 - **TypeScript** - Type safety
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Styling
+- **@microsoft/fetch-event-source** - SSE with POST support
 - **Recharts** - Charts and visualizations
 - **Lucide React** - Icons
-
-### Architecture
-- **Stateless** - No database required
-- **Event-Driven** - SSE for real-time updates
-- **Type-Safe** - End-to-end TypeScript + Pydantic
-- **Modular** - Tool registry pattern for easy extension
 
 ---
 
@@ -100,27 +95,21 @@ Watch the agent work in real-time:
 - **Node.js 18+**
 - **OpenAI API Key** - [Get one here](https://platform.openai.com/api-keys)
 
-### 1. Clone Repository
-```bash
-git clone <your-repo-url>
-cd bardeen-chatbot
-```
-
-### 2. Setup Environment
+### 1. Setup Environment
 ```bash
 # Create .env file in backend directory
 cat > backend/.env << EOF
 OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-5.2
 EOF
 ```
 
-### 3. Install Dependencies
+### 2. Install Dependencies
 
 **Backend:**
 ```bash
 cd backend
-pip install pydantic-settings yfinance fastapi uvicorn openai python-multipart jinja2 tenacity
+uv sync
 ```
 
 **Frontend:**
@@ -129,9 +118,16 @@ cd ../frontend
 npm install
 ```
 
-### 4. Run the Application
+### 3. Run the Application
 
-**Option A: Run Both Services (Recommended)**
+To start both frontend and backend at same time
+
+```bash
+chmod +x ./start.sh
+./start.sh
+```
+
+To run backend and frontend seperately
 
 Open two terminal windows:
 
@@ -149,38 +145,8 @@ npm run dev
 ```
 Frontend runs on: http://localhost:5173
 
-**Option B: Single Script (Development)**
 
-Create a `start.sh` script in the root directory:
-```bash
-#!/bin/bash
-
-# Start backend in background
-cd backend && uvicorn app.main:app --reload &
-BACKEND_PID=$!
-
-# Start frontend in background
-cd frontend && npm run dev &
-FRONTEND_PID=$!
-
-echo "🚀 FinAgent is starting..."
-echo "📡 Backend: http://localhost:8000"
-echo "🎨 Frontend: http://localhost:5173"
-echo ""
-echo "Press Ctrl+C to stop all services"
-
-# Wait for Ctrl+C
-trap "kill $BACKEND_PID $FRONTEND_PID; exit" INT
-wait
-```
-
-Make it executable and run:
-```bash
-chmod +x start.sh
-./start.sh
-```
-
-### 5. Access the Application
+### $. Access the Application
 
 Open your browser and navigate to:
 - **Chat Interface**: http://localhost:5173/
@@ -192,7 +158,7 @@ Open your browser and navigate to:
 ## 📁 Project Structure
 
 ```
-bardeen-chatbot/
+FinAgent/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                    # FastAPI entry point
@@ -211,7 +177,8 @@ bardeen-chatbot/
 │   │   │   ├── stock_price.py         # Stock price tool
 │   │   │   ├── company_info.py        # Company info tool
 │   │   │   ├── financial_ratios.py    # Financial ratios tool
-│   │   │   └── calculator.py          # Investment calculator
+│   │   │   ├── calculator.py          # Investment calculator
+│   │   │   └── stock_returns.py       # Historical returns calculator
 │   │   ├── prompts/
 │   │   │   ├── fin_react_agent.j2     # ReAct agent prompt
 │   │   │   ├── faithfulness_judge.j2  # LLM judge prompt
@@ -220,9 +187,8 @@ bardeen-chatbot/
 │   │   │   ├── message.py             # Chat schemas
 │   │   │   └── evaluation.py          # Evaluation schemas
 │   │   └── utils/
-│   │       └── csv_parser.py          # CSV parsing for evaluations
-│   ├── .env                           # Environment variables
-│   └── sample_evaluation.csv          # Example test dataset
+│   │       └── csv_parser.py          # CSV parsing for evaluations                          
+│   └── .env                           # Environment variables
 │
 ├── frontend/
 │   ├── src/
@@ -261,24 +227,27 @@ bardeen-chatbot/
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| **get_stock_price** | Current/historical stock prices | `ticker`, `period` (optional), `info` (optional) |
+| **get_stock_price** | Current/historical stock prices with start/end prices | `ticker`, `period` (optional), `info` (optional) |
 | **get_company_info** | Company details, sector, industry | `ticker` |
 | **calculate_financial_ratios** | P/E, PEG, ROE, ROA, margins | `ticker` |
 | **calculate_investment_returns** | Compound interest calculations | `principal`, `annual_rate`, `years`, `monthly_contribution` (optional) |
+| **calculate_stock_returns** | Historical investment returns calculator | `ticker`, `investment_amount`, `years_ago` or `start_date` |
 
 ---
 
 ## 📡 API Endpoints
 
 ### Chat & Streaming
-- `GET /sse/chat` - Real-time streaming chat with SSE
-  - Query params: `message`, `history`
-  - Events: `status`, `thought`, `answer`
+- `POST /sse/chat` - Real-time streaming chat with SSE
+  - Request body: JSON with `message` and `history`
+  - Events: `status`, `thought`, `answer`, `content_chunk`
+  - Uses `@microsoft/fetch-event-source` for POST support
 
 ### Evaluation
 - `POST /evaluations/run` - Upload CSV and stream evaluation results
   - Accepts: CSV file with test cases
   - Returns: SSE stream with results
+  - Events: `status`, `test_case_start`, `test_case_result`, `summary`, `error`
 
 ### Health
 - `GET /` - Health check endpoint
@@ -289,7 +258,22 @@ bardeen-chatbot/
 
 ### Chat Query
 ```bash
-curl -N "http://localhost:8000/sse/chat?message=What%20is%20Apple's%20stock%20price?"
+curl -N -X POST "http://localhost:8000/sse/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is Apple'\''s stock price?",
+    "history": []
+  }'
+```
+
+### Historical Returns Query
+```bash
+curl -N -X POST "http://localhost:8000/sse/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "If I invested $10,000 in Apple 3 years ago, what would it be worth today?",
+    "history": []
+  }'
 ```
 
 ### Evaluation

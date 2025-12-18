@@ -1,6 +1,7 @@
 import { AgentStatus, Message, SSEEvent, StatusUpdate, ThoughtStep } from '@/types';
 import { Send } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { StatusIndicator } from './StatusIndicator';
@@ -12,7 +13,7 @@ export function ChatInterface() {
   const [currentStatus, setCurrentStatus] = useState<StatusUpdate | null>(null);
   const [latestThoughts, setLatestThoughts] = useState<ThoughtStep[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -24,129 +25,130 @@ export function ChatInterface() {
 
   const streamSSEMessage = async (content: string, historyMessages: Pick<Message, 'role' | 'content'>[]) => {
     const SSE_BASE_URL = import.meta.env.VITE_SSE_BASE_URL || 'http://localhost:8000/sse';
-    const historyPayload = historyMessages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-    const url = `${SSE_BASE_URL}/chat?message=${encodeURIComponent(content)}&history=${encodeURIComponent(JSON.stringify(historyPayload))}`;
+    const url = `${SSE_BASE_URL}/chat`;
 
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     let assistantContent = '';
     const newThoughts: ThoughtStep[] = [];
+    let messageCreated = false; // Flag to prevent duplicate messages
 
     return new Promise<void>((resolve, reject) => {
-      // Handle different event types
-      eventSource.addEventListener('status', (e) => {
-        try {
-          const data = JSON.parse(e.data) as SSEEvent;
-          if (data.type === 'status' && 'message' in data) {
-            const toolName = data.tool_name || data.tool_internal_name;
-            const status: StatusUpdate = {
-              status: (data.status || 'thinking') as AgentStatus,
-              message: data.message,
-              tool_name: toolName,
-              tool_internal_name: data.tool_internal_name,
-              progress: data.progress,
-            };
-            setCurrentStatus(status);
+      fetchEventSource(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: content,
+          history: historyMessages,
+        }),
+        signal: abortController.signal,
 
-            if (status.status === 'completed' || status.status === 'complete') {
-              setLatestThoughts([]);
-            }
+        onopen: async (response) => {
+          if (response.ok) {
+            return; // Everything is OK
+          } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+            // Client error - don't retry
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          } else {
+            // Server error or rate limit - will retry
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-        } catch (error) {
-          console.error('Error parsing status event:', error);
-        }
-      });
+        },
 
-      eventSource.addEventListener('thought', (e) => {
-        try {
-          const data = JSON.parse(e.data) as SSEEvent;
-          if (data.type === 'thought' && 'thought' in data) {
-            const thought: ThoughtStep = {
-              iteration: data.iteration,
-              thought: data.thought,
-              action: data.action,
-            };
-            newThoughts.push(thought);
-            // Update thoughts in real-time as they arrive
-            setLatestThoughts([...newThoughts]);
-          }
-        } catch (error) {
-          console.error('Error parsing thought event:', error);
-        }
-      });
+        onmessage: (event) => {
+          try {
+            const data = JSON.parse(event.data) as SSEEvent;
 
-      eventSource.addEventListener('answer', (e) => {
-        try {
-          const data = JSON.parse(e.data) as any;
-          if (data.type === 'answer') {
-            if (data.chunk) {
-              assistantContent += data.chunk;
-            } else if (data.content) {
-              assistantContent = data.content;
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing answer event:', error);
-        }
-      });
+            // Handle status events
+            if (event.event === 'status' || data.type === 'status') {
+              if ('message' in data) {
+                const toolName = data.tool_name || data.tool_internal_name;
+                const status: StatusUpdate = {
+                  status: (data.status || 'thinking') as AgentStatus,
+                  message: data.message,
+                  tool_name: toolName,
+                  tool_internal_name: data.tool_internal_name,
+                  progress: data.progress,
+                };
+                setCurrentStatus(status);
 
-      eventSource.onerror = (error) => {
-        console.error('SSE Error:', error);
-        eventSource.close();
-        eventSourceRef.current = null;
+                if (status.status === 'completed' || status.status === 'complete') {
+                  setLatestThoughts([]);
 
-        setCurrentStatus({
-          status: 'error',
-          message: 'Connection lost',
-        });
+                  // Create assistant message from streamed content (only once)
+                  if (assistantContent && !messageCreated) {
+                    messageCreated = true;
+                    const assistantMessage: Message = {
+                      id: Date.now(),
+                      role: 'assistant',
+                      content: assistantContent,
+                      created_at: new Date().toISOString(),
+                      tokens_used: null,
+                      response_time_ms: null,
+                      model_name: null,
+                      tool_executions: [],
+                    };
+                    setMessages((prev) => [...prev, assistantMessage]);
+                  }
 
-        setIsLoading(false);
-        setTimeout(() => setCurrentStatus(null), 3000);
-
-        reject(new Error('SSE connection failed'));
-      };
-
-      // Separate listener for completion to avoid conflicts
-      const handleStatusCompletion = (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data) as SSEEvent;
-          if (data.type === 'status' && data.status === 'complete') {
-            eventSource.close();
-            eventSourceRef.current = null;
-
-            // Create assistant message from streamed content
-            if (assistantContent) {
-              const assistantMessage: Message = {
-                id: Date.now(),
-                role: 'assistant',
-                content: assistantContent,
-                created_at: new Date().toISOString(),
-                tokens_used: null,
-                response_time_ms: null,
-                model_name: null,
-                tool_executions: [],
-              };
-
-              setMessages((prev) => [...prev, assistantMessage]);
+                  setIsLoading(false);
+                  setCurrentStatus(null);
+                  abortControllerRef.current = null;
+                  resolve();
+                }
+              }
             }
 
-            setIsLoading(false);
+            // Handle thought events
+            if (event.event === 'thought' || data.type === 'thought') {
+              if ('thought' in data) {
+                const thought: ThoughtStep = {
+                  iteration: data.iteration,
+                  thought: data.thought,
+                  action: data.action,
+                };
+                newThoughts.push(thought);
+                setLatestThoughts([...newThoughts]);
+              }
+            }
 
-            setCurrentStatus(null);
-            setLatestThoughts([]);
-            resolve();
+            // Handle answer events
+            if (event.event === 'answer' || data.type === 'answer') {
+              if (data.chunk) {
+                assistantContent += data.chunk;
+              } else if (data.content) {
+                assistantContent = data.content;
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing SSE event:', error);
           }
-        } catch (error) {
-          console.error('Error parsing completion event:', error);
-        }
-      };
+        },
 
-      // Add completion handler
-      eventSource.addEventListener('status', handleStatusCompletion);
+        onerror: (error) => {
+          console.error('SSE Error:', error);
+          abortControllerRef.current = null;
+
+          setCurrentStatus({
+            status: 'error',
+            message: 'Connection lost',
+          });
+
+          setIsLoading(false);
+          setTimeout(() => setCurrentStatus(null), 3000);
+
+          reject(error);
+          throw error; // Stop retrying
+        },
+
+        onclose: () => {
+          console.log('SSE connection closed');
+          abortControllerRef.current = null;
+        },
+      });
     });
   };
 
@@ -211,7 +213,7 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
         <div className="flex items-center gap-3">

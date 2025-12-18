@@ -279,7 +279,7 @@ class AgentService:
                 tools=None,  # No function calling for structured JSON
             )
 
-            # Collect content chunks
+            # Collect content chunks (but don't stream them yet - they might be raw JSON)
             content_chunks = []
 
             async for chunk in stream:
@@ -288,13 +288,9 @@ class AgentService:
                 if not delta:
                     continue
 
-                # Handle content
+                # Handle content - just collect, don't stream yet
                 if delta.content:
                     content_chunks.append(delta.content)
-                    yield {
-                        "type": "content_chunk",
-                        "content": delta.content,
-                    }
 
             # Parse the complete response
             full_content = "".join(content_chunks)
@@ -341,16 +337,22 @@ class AgentService:
             # Check if final answer
             if action == "final_answer":
                 final_answer = action_input.get("answer", "")
+
+                # Stream the final answer word by word for better UX
+                words = final_answer.split(' ')
+                for i, word in enumerate(words):
+                    chunk = word if i == 0 else ' ' + word
+                    yield {
+                        "type": "content_chunk",
+                        "content": chunk,
+                    }
+
+                # Signal completion (frontend will create message from accumulated chunks)
                 yield {
                     "type": "status",
-                    "status": "completed",
+                    "status": "complete",
                     "message": "Response complete",
                     "progress": 100,
-                }
-                yield {
-                    "type": "final_answer",
-                    "content": final_answer,
-                    "iterations": iteration,
                 }
                 return
 

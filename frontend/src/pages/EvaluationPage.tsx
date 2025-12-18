@@ -264,6 +264,23 @@ export default function EvaluationPage() {
               </div>
             </div>
 
+            <div className="border-l-4 border-teal-500 pl-3">
+              <div className="font-mono text-xs text-teal-700 font-bold">calculate_stock_returns</div>
+              <p className="text-xs text-gray-600 mt-1">Calculate historical stock investment returns - what an investment would be worth today</p>
+              <div className="mt-2 text-xs">
+                <span className="font-semibold">Arguments:</span>
+                <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
+                  <li><code className="bg-gray-100 px-1">ticker</code> (required) - Stock symbol (e.g., "AAPL", "TSLA")</li>
+                  <li><code className="bg-gray-100 px-1">investment_amount</code> (required) - Initial investment in dollars</li>
+                  <li><code className="bg-gray-100 px-1">years_ago</code> (optional) - Years ago investment was made (e.g., 3 for 3 years ago)</li>
+                  <li><code className="bg-gray-100 px-1">start_date</code> (optional) - Specific start date in YYYY-MM-DD format</li>
+                </ul>
+                <div className="mt-2 bg-gray-50 p-2 rounded">
+                  <span className="text-gray-500">Example:</span> <code className="text-xs">{`{""ticker"":""AAPL"",""investment_amount"":10000,""years_ago"":3}`}</code>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -277,11 +294,12 @@ export default function EvaluationPage() {
 2,"Tell me about Microsoft","get_company_info","{""ticker"":""MSFT""}","sector,industry"
 3,"Calculate ratios for Google","calculate_financial_ratios","{""ticker"":""GOOGL""}","P/E ratio"
 4,"$1000 at 7% for 10 years?","calculate_investment_returns","{""principal"":1000,""annual_rate"":7,""years"":10}","future value"
-5,"Get Apple price and company info","[""get_stock_price"",""get_company_info""]","[{""ticker"":""AAPL""},{""ticker"":""AAPL""}]","Apple,stock,sector"`}
+5,"Get Apple price and company info","[""get_stock_price"",""get_company_info""]","[{""ticker"":""AAPL""},{""ticker"":""AAPL""}]","Apple,stock,sector"
+6,"If I invested $10000 in Apple 3 years ago","calculate_stock_returns","{""ticker"":""AAPL"",""investment_amount"":10000,""years_ago"":3}","return,value,Apple"`}
             </pre>
           </div>
           <p className="text-xs text-gray-600 mt-2">
-            <span className="font-semibold">Note:</span> Row 5 shows multi-tool validation - expecting both <code className="bg-gray-100 px-1">get_stock_price</code> and <code className="bg-gray-100 px-1">get_company_info</code> to be called with corresponding arguments.
+            <span className="font-semibold">Note:</span> Row 5 shows multi-tool validation - expecting both <code className="bg-gray-100 px-1">get_stock_price</code> and <code className="bg-gray-100 px-1">get_company_info</code> to be called with corresponding arguments. Row 6 shows the new <code className="bg-gray-100 px-1">calculate_stock_returns</code> tool for historical investment calculations.
           </p>
         </div>
       </div>

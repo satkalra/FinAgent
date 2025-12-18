@@ -21,7 +21,7 @@ export function useEvaluationSSE(): UseEvaluationSSEReturn {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [currentQuery, setCurrentQuery] = useState<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!file) return;
@@ -37,62 +37,52 @@ export function useEvaluationSSE(): UseEvaluationSSEReturn {
         setProgress({ current: 0, total: 0 });
         setCurrentQuery(null);
 
-        const eventSource = await uploadAndStreamEvaluation(file);
-        if (!isMounted) {
-          eventSource.close();
-          return;
-        }
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
 
-        eventSourceRef.current = eventSource;
+        await uploadAndStreamEvaluation(
+          file,
+          {
+            onStatus: (data) => {
+              if (!isMounted) return;
+              console.log('Status:', data);
+            },
 
-        // Listen for status events
-        eventSource.addEventListener('status', (e: MessageEvent) => {
-          if (!isMounted) return;
-          const data = JSON.parse(e.data);
-          console.log('Status:', data);
-        });
+            onTestCaseStart: (data) => {
+              if (!isMounted) return;
+              setProgress({ current: data.current, total: data.total });
+              setCurrentQuery(data.query);
+            },
 
-        // Listen for test_case_start events
-        eventSource.addEventListener('test_case_start', (e: MessageEvent) => {
-          if (!isMounted) return;
-          const data = JSON.parse(e.data);
-          setProgress({ current: data.current, total: data.total });
-          setCurrentQuery(data.query);
-        });
+            onTestCaseResult: (result) => {
+              if (!isMounted) return;
+              setResults(prev => [...prev, result]);
+            },
 
-        // Listen for test_case_result events
-        eventSource.addEventListener('test_case_result', (e: MessageEvent) => {
-          if (!isMounted) return;
-          const result = JSON.parse(e.data);
-          setResults(prev => [...prev, result]);
-        });
+            onSummary: (summaryData) => {
+              if (!isMounted) return;
+              setSummary(summaryData);
+              setIsRunning(false);
+              setCurrentQuery(null);
+              abortControllerRef.current = null;
+            },
 
-        // Listen for summary event
-        eventSource.addEventListener('summary', (e: MessageEvent) => {
-          if (!isMounted) return;
-          const summaryData = JSON.parse(e.data);
-          setSummary(summaryData);
-          setIsRunning(false);
-          setCurrentQuery(null);
-        });
-
-        // Listen for error events
-        eventSource.addEventListener('error', (e: MessageEvent) => {
-          if (!isMounted) return;
-          const errorData = JSON.parse(e.data);
-          setError(errorData.message);
-
-          if (!errorData.continue) {
-            setIsRunning(false);
-            eventSource.close();
-          }
-        });
+            onError: (errorMessage) => {
+              if (!isMounted) return;
+              setError(errorMessage);
+              setIsRunning(false);
+              abortControllerRef.current = null;
+            },
+          },
+          abortController.signal
+        );
 
       } catch (err) {
         if (!isMounted) return;
         const message = err instanceof Error ? err.message : 'Unknown error occurred';
         setError(message);
         setIsRunning(false);
+        abortControllerRef.current = null;
       }
     };
 
@@ -100,9 +90,9 @@ export function useEvaluationSSE(): UseEvaluationSSEReturn {
 
     return () => {
       isMounted = false;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, [file]);
@@ -112,9 +102,9 @@ export function useEvaluationSSE(): UseEvaluationSSEReturn {
   };
 
   const reset = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     setFile(null);
     setResults([]);

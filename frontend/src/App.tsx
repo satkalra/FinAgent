@@ -31,12 +31,14 @@ function Navigation() {
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
+      <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
         <Navigation />
-        <Routes>
-          <Route path="/" element={<ChatInterface />} />
-          <Route path="/evaluation" element={<EvaluationPage />} />
-        </Routes>
+        <div className="flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/" element={<ChatInterface />} />
+            <Route path="/evaluation" element={<EvaluationPage />} />
+          </Routes>
+        </div>
       </div>
     </BrowserRouter>
   );

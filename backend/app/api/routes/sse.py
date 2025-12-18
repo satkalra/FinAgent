@@ -7,37 +7,31 @@ from typing import Any, Dict, List
 from app.core.sse_manager import sse_manager
 from app.prompts.prompt_utils import render_prompt
 from app.services.agent_service import agent_service
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/chat")
-async def stream_chat(
-    message: str = Query(..., min_length=1),
-    history: str | None = Query(
-        default=None, description="JSON encoded prior messages"
-    ),
-):
+class ChatRequest(BaseModel):
+    """Request model for chat endpoint."""
+    message: str = Field(..., min_length=1, description="User message")
+    history: List[Dict[str, str]] = Field(default_factory=list, description="Chat history")
+
+
+@router.post("/chat")
+async def stream_chat(request: ChatRequest):
     """Stream chat responses over SSE without any persistence layer."""
 
     async def event_generator():
         """Generate SSE events for the chat stream."""
         try:
-            try:
-                parsed_history: List[Dict[str, Any]] = (
-                    json.loads(history) if history else []
-                )
-                if not isinstance(parsed_history, list):
-                    parsed_history = []
-            except json.JSONDecodeError:
-                parsed_history = []
-
+            # Sanitize history
             sanitized_history = []
-            for item in parsed_history:
+            for item in request.history:
                 if not isinstance(item, dict):
                     continue
                 content = item.get("content")
@@ -57,7 +51,7 @@ async def stream_chat(
             message_history = [
                 system_message,
                 *sanitized_history,
-                {"role": "user", "content": message},
+                {"role": "user", "content": request.message},
             ]
 
             response_content_chunks: List[str] = []

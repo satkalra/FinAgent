@@ -67,9 +67,13 @@ class StockPriceTool(BaseTool):
                         "period": period,
                         "start_date": hist.index[0].strftime("%Y-%m-%d"),
                         "end_date": hist.index[-1].strftime("%Y-%m-%d"),
+                        "start_price": round(hist["Close"].iloc[0], 2),
+                        "end_price": round(hist["Close"].iloc[-1], 2),
                         "high": round(hist["High"].max(), 2),
                         "low": round(hist["Low"].min(), 2),
                         "average": round(hist["Close"].mean(), 2),
+                        "price_change": round(hist["Close"].iloc[-1] - hist["Close"].iloc[0], 2),
+                        "price_change_percent": round(((hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0]) * 100, 2),
                     }
 
             return json.dumps(result, indent=2)
