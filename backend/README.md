@@ -34,7 +34,7 @@ source .venv/bin/activate  # macOS/Linux
 
 2. Install dependencies:
 ```bash
-uv pip install -e .
+uv sync
 ```
 
 3. Create `.env` file:
@@ -52,15 +52,6 @@ Or with uvicorn directly:
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-
-### VSCode Debugging
-
-Press **F5** or use the Debug panel to start the FastAPI backend with the debugger attached.
-
-Available debug configurations:
-- **FastAPI: Backend** - Run the full backend with auto-reload
-- **FastAPI: Debug Current File** - Debug the currently open Python file
-- **Python: Test Current File** - Run pytest on the current test file
 
 ## Project Structure
 
@@ -87,11 +78,6 @@ Once the server is running, visit:
 - ReDoc: http://localhost:8000/redoc
 
 ## Development
-
-### Running tests
-```bash
-pytest
-```
 
 ### Code formatting
 ```bash

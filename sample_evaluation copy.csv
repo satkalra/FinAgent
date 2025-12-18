@@ -1,0 +1,4 @@
+test_id,query,expected_tool,expected_args,expected_response_contains
+E1,"What is Apple's stock price?","get_stock_price","{""ticker"":""AAPL""}","current price,AAPL"
+E2,"Tell me about Microsoft (sector and industry).","get_company_info","{""ticker"":""MSFT""}","sector,industry,Microsoft"
+E3,"Calculate key financial ratios for Google.","calculate_financial_ratios","{""ticker"":""GOOGL""}","P/E,ratios,GOOGL"

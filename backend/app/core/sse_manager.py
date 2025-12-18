@@ -43,7 +43,7 @@ class SSEManager:
                 yield SSEManager.format_sse(event, event=event_type)
 
         except Exception as e:
-            logger.error(f"Error in SSE stream: {e}")
+            logger.error("Error in SSE stream: %s", e)
             error_event = {
                 "type": "error",
                 "error": str(e),

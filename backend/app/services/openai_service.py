@@ -59,7 +59,7 @@ class OpenAIService:
             return response
 
         except Exception as e:
-            logger.error(f"Error creating chat completion: {e}")
+            logger.error("Error creating chat completion: %s", e)
             raise
 
     async def create_streaming_completion(

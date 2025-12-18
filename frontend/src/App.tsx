@@ -33,7 +33,7 @@ function App() {
     <BrowserRouter>
       <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
         <Navigation />
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<ChatInterface />} />
             <Route path="/evaluation" element={<EvaluationPage />} />

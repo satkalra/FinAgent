@@ -14,7 +14,7 @@ class StockPriceTool(BaseTool):
     display_name = "Stock Price Lookup"
 
     async def execute(
-        self, ticker: str, period: str = "1d", info: bool = True, **kwargs
+        self, ticker: str, period: str = "1d", info: bool = True, **kwargs  # kwargs to ignore extra params
     ) -> str:
         """
         Get stock price information.

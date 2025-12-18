@@ -1,7 +1,8 @@
 """Pydantic schemas for evaluation system."""
 
+from typing import Any, Dict, List, Literal, Optional, Union
+
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Dict, Any, Optional, Literal, Union
 
 
 class TestCase(BaseModel):

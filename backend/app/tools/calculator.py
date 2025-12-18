@@ -18,6 +18,7 @@ class CalculatorTool(BaseTool):
         annual_rate: float,
         years: float,
         monthly_contribution: float = 0.0,
+        **kwargs  # Ignore any extra parameters the LLM might hallucinate
     ) -> str:
         """
         Calculate investment returns.

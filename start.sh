@@ -11,7 +11,7 @@ if [ ! -f "backend/.env" ]; then
     echo ""
     echo "cat > backend/.env << EOF"
     echo "OPENAI_API_KEY=your_api_key_here"
-    echo "OPENAI_MODEL=gpt-4o"
+    echo "OPENAI_MODEL=gpt-5.2"
     echo "EOF"
     echo ""
     exit 1

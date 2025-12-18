@@ -119,7 +119,7 @@ class AgentService:
             if not parsed_response:
                 # Fallback: treat as final answer if JSON parsing fails
                 logger.warning(
-                    f"Failed to parse JSON response: {assistant_content[:200]}"
+                    "Failed to parse JSON response: %s", {assistant_content[:200]}
                 )
                 status_updates.append(
                     StatusUpdate(

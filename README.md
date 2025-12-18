@@ -109,6 +109,12 @@ EOF
 **Backend:**
 ```bash
 cd backend
+uv venv 
+```
+Now virtual env is ready 
+
+```bash
+source .venv/bin/activate 
 uv sync
 ```
 
@@ -252,38 +258,6 @@ FinAgent/
 ### Health
 - `GET /` - Health check endpoint
 
----
-
-## 🧪 Example Usage
-
-### Chat Query
-```bash
-curl -N -X POST "http://localhost:8000/sse/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What is Apple'\''s stock price?",
-    "history": []
-  }'
-```
-
-### Historical Returns Query
-```bash
-curl -N -X POST "http://localhost:8000/sse/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "If I invested $10,000 in Apple 3 years ago, what would it be worth today?",
-    "history": []
-  }'
-```
-
-### Evaluation
-```bash
-curl -X POST "http://localhost:8000/evaluations/run" \
-  -F "file=@sample_evaluation.csv"
-```
-
----
-
 ## 🎓 How It Works
 
 ### ReAct Agent Flow
@@ -327,35 +301,10 @@ Create `backend/.env`:
 OPENAI_API_KEY=sk-...
 
 # Optional
-OPENAI_MODEL=gpt-4o              # Default: gpt-4o
+OPENAI_MODEL=gpt-5.2              # Default: gpt-5.2
 LOG_LEVEL=INFO                    # Default: INFO
 CORS_ORIGINS=["http://localhost:5173"]  # Frontend URL
 ```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Areas for improvement:
-- Add more financial tools (portfolio analysis, risk metrics, etc.)
-- Implement caching for API calls
-- Add authentication and rate limiting
-- Improve error handling and retry logic
-- Add unit and integration tests
-
----
-
-## 📄 License
-
-MIT License - See LICENSE file for details
-
----
-
-## 🙏 Acknowledgments
-
-- Built with [OpenAI GPT-4o](https://openai.com/)
-- Financial data from [yfinance](https://github.com/ranaroussi/yfinance)
-- UI components inspired by [shadcn/ui](https://ui.shadcn.com/)
 
 ---
 
@@ -365,10 +314,3 @@ MIT License - See LICENSE file for details
 - [🔗 API Documentation](http://localhost:8000/docs) - Interactive Swagger docs (when backend running)
 - [🎨 Frontend README](./frontend/README.md) - Frontend-specific documentation
 
----
-
-<div align="center">
-
-**Made with ❤️ using ReAct agents and modern web technologies**
-
-</div>

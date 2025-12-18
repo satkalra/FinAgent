@@ -65,6 +65,7 @@ export function useEvaluationSSE(): UseEvaluationSSEReturn {
               setIsRunning(false);
               setCurrentQuery(null);
               abortControllerRef.current = null;
+              setFile(null); // Clear file to prevent restart on re-render
             },
 
             onError: (errorMessage) => {

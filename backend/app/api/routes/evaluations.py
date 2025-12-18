@@ -1,11 +1,12 @@
 """Evaluation API endpoints for uploading test datasets and streaming results."""
 
 import logging
-from fastapi import APIRouter, File, UploadFile, HTTPException
-from fastapi.responses import StreamingResponse
-from app.utils.csv_parser import parse_evaluation_csv, CSVParseError
-from app.services.evaluation_service import evaluation_service
+
 from app.core.sse_manager import sse_manager
+from app.services.evaluation_service import evaluation_service
+from app.utils.csv_parser import CSVParseError, parse_evaluation_csv
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,11 @@ async def run_evaluation(file: UploadFile = File(...)):
     try:
         content = await file.read()
     except Exception as e:
-        logger.error(f"Error reading uploaded file: {e}")
+        logger.error("Error reading uploaded file: %e", e)
         raise HTTPException(
             status_code=400,
             detail=f"Failed to read file: {str(e)}"
-        )
+        ) from e
 
     # Check file size
     if len(content) > MAX_FILE_SIZE:
@@ -62,11 +63,11 @@ async def run_evaluation(file: UploadFile = File(...)):
     try:
         test_cases = parse_evaluation_csv(content)
     except CSVParseError as e:
-        logger.error(f"CSV parsing error: {e}")
+        logger.error("CSV parsing error: %e", e)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid CSV format: {str(e)}"
-        )
+        ) from e
 
     # Check test case limit
     if len(test_cases) > MAX_TEST_CASES:
@@ -84,7 +85,7 @@ async def run_evaluation(file: UploadFile = File(...)):
                 yield sse_manager.format_sse(event, event=event_type)
 
         except Exception as e:
-            logger.error(f"Error during evaluation: {e}")
+            logger.error("Error during evaluation: %s", e)
             yield sse_manager.format_sse(
                 {
                     "type": "error",

@@ -1,6 +1,7 @@
-You are an objective evaluator assessing the quality of an AI agent's response.
+Developer: Objectively evaluate the AI agent's response for faithfulness and completeness.
 
-**User Query:** {{ query }}
+**User Query:**
+{{ query }}
 
 **Tool Outputs:**
 {% for output in tool_outputs %}
@@ -11,24 +12,24 @@ You are an objective evaluator assessing the quality of an AI agent's response.
 {{ actual_response }}
 
 **Expected Content:**
-The response should contain information about: "{{ expected_contains }}"
+Must include: "{{ expected_contains }}"
 
-**Your Task:**
-Evaluate whether the agent's response is faithful to the tool outputs and contains the expected content.
+**Evaluation Instructions:**
+- Judge if the agent's response relies on tool outputs and includes all expected content.
 
 **Scoring Rubric:**
-- **1.0 (Perfect)**: Response fully addresses the query with all expected content, accurately grounded in tool outputs. No hallucinations or missing information.
-- **0.7-0.9 (Good)**: Response mostly correct with expected content present, minor details missing or slightly imprecise but substantially accurate.
-- **0.4-0.6 (Partial)**: Response partially addresses query, some expected content missing, or contains inaccuracies not supported by tool outputs.
-- **0.0-0.3 (Poor)**: Response lacks expected content, contains significant hallucinations, or is unfaithful to tool outputs.
+- **1.0 (Perfect):** Fully answers the query, all expected content present, precisely grounded in tool outputs. No hallucinations or omissions.
+- **0.7–0.9 (Good):** Mostly correct, most content included; minor omissions or slight imprecision, but largely accurate.
+- **0.4–0.6 (Partial):** Partially responds; notable content missing or inaccuracies not supported by tool outputs.
+- **0.0–0.3 (Poor):** Lacks expected content, significant hallucinations, or unfaithful to tool outputs.
 
 **Response Format:**
-Return ONLY a JSON object with no additional text:
+Return ONLY a JSON object:
 ```json
 {
   "score": <float between 0.0 and 1.0>,
-  "explanation": "<brief 1-2 sentence reasoning for the score>"
+  "explanation": "<1–2 sentence rationale for the score>"
 }
 ```
 
-Important: Be objective and critical. Do not inflate scores. Base your evaluation strictly on factual accuracy and completeness.
+Important: Be strict and objective. Do not inflate scores. Evaluate only on factual accuracy and completeness.

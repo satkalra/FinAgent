@@ -10,10 +10,7 @@ Comprehensive guide to testing and evaluating your AI financial agent's performa
 - [Quick Start](#quick-start)
 - [CSV Format Guide](#csv-format-guide)
 - [Evaluation Metrics](#evaluation-metrics)
-- [Multi-Tool Testing](#multi-tool-testing)
-- [Best Practices](#best-practices)
 - [Interpreting Results](#interpreting-results)
-- [Advanced Usage](#advanced-usage)
 
 ---
 
@@ -36,7 +33,7 @@ The evaluation system allows you to systematically test your agent's performance
 
 ✅ **Multi-Tool Support** - Test queries requiring multiple tools
 
-✅ **LLM-as-Judge** - GPT-4o evaluates response quality
+✅ **LLM-as-Judge** - GPT-5.2 evaluates response quality
 
 ✅ **Downloadable Results** - Export detailed results as JSON
 
@@ -73,6 +70,35 @@ Use the included sample file:
 ```bash
 sample_evaluation.csv
 ```
+
+**Sample Dataset Overview:**
+The sample evaluation contains **15 test cases** across three difficulty levels:
+
+**🟢 Easy (Tests 1-5)** - Single tool, simple queries
+- Test 1: Basic stock price lookup
+- Test 2: Company information query
+- Test 3: Financial ratios calculation
+- Test 4: Simple investment calculation
+- Test 5: Historical price data
+
+**🟡 Medium (Tests 6-10)** - Multi-tool or complex parameters
+- Test 6: Multi-tool query (price + company info)
+- Test 7: Specific metric extraction (debt-to-equity)
+- Test 8: Historical returns calculation
+- Test 9: Investment with monthly contributions
+- Test 10: Historical data with specific period
+
+**🔴 Hard (Tests 11-15)** - Multiple tools with complex reasoning
+- Test 11: 4-tool comparison (2 stocks, price + ratios for each)
+- Test 12: 3-tool comprehensive analysis
+- Test 13: Multi-year returns with annualization
+- Test 14: Ratio analysis with sector context
+- Test 15: Complex compound interest with contributions
+
+**Expected Results:**
+- Easy tests: ~95-100% pass rate
+- Medium tests: ~80-90% pass rate
+- Hard tests: ~70-85% pass rate
 
 ---
 
@@ -331,107 +357,6 @@ Overall Score = (Tool Selection + Argument Match + Faithfulness) / 3
 - Score ≥ 0.7: Test **PASSES** ✅
 - Score < 0.7: Test **FAILS** ❌
 
----
-
-## Multi-Tool Testing
-
-The system fully supports testing queries that require multiple tools.
-
-### How It Works
-
-1. **Tool Selection:** Checks that ALL expected tools were called
-   - Score = (Number of expected tools called) / (Total expected tools)
-
-2. **Argument Match:** Validates arguments for EACH expected tool
-   - Matches tools in order specified in CSV
-   - Averages scores across all tools
-
-3. **Faithfulness:** Uses ALL tool outputs to evaluate response
-   - Ensures response incorporates data from all tools
-
-### Example Multi-Tool Test
-
-**CSV Entry:**
-```csv
-6,"Compare Apple and Microsoft stock prices","[""get_stock_price"",""get_stock_price""]","[{""ticker"":""AAPL""},{""ticker"":""MSFT""}]","Apple,Microsoft,price,comparison"
-```
-
-**Agent Behavior:**
-1. Calls `get_stock_price` with `ticker="AAPL"`
-2. Calls `get_stock_price` with `ticker="MSFT"`
-3. Provides comparative analysis
-
-**Evaluation:**
-- Tool Selection: 1.0 (both calls to get_stock_price ✅)
-- Argument Match: 1.0 (both ticker args correct ✅)
-- Faithfulness: 0.95 (includes both prices and comparison ✅)
-- **Overall: 0.98 - PASS** ✅
-
----
-
-## Best Practices
-
-### Writing Good Test Cases
-
-1. **Be Specific**
-   - ❌ "Tell me about stocks"
-   - ✅ "What is Apple's current stock price?"
-
-2. **Match Real User Queries**
-   - Test questions users actually ask
-   - Include variations (formal, casual, abbreviated)
-
-3. **Cover Edge Cases**
-   - Missing information: "What's the stock price?" (no ticker)
-   - Ambiguous requests: "Tell me about Apple" (stock or company?)
-   - Multi-step reasoning: "Compare these companies..."
-
-4. **Test Multi-Tool Scenarios**
-   - "Get Apple's price and company information"
-   - "Compare AAPL and MSFT ratios"
-   - "Show me Tesla's price, info, and ratios"
-
-5. **Use Realistic Keywords**
-   - Don't require exact wording
-   - Include synonyms: "current price,latest price,stock price"
-   - Focus on key information, not phrasing
-
-### Dataset Organization
-
-**Small Dataset (5-10 tests):** Quick smoke tests
-```csv
-- 1 test per tool
-- 1 multi-tool test
-- 1-2 edge cases
-```
-
-**Medium Dataset (20-50 tests):** Comprehensive testing
-```csv
-- Multiple variations per tool
-- Several multi-tool combinations
-- Edge cases and error scenarios
-```
-
-**Large Dataset (100+ tests):** Production validation
-```csv
-- Real user query samples
-- Full coverage of tool combinations
-- Regression tests for known issues
-```
-
-### File Naming Convention
-
-```
-evaluation_[purpose]_[date].csv
-
-Examples:
-- evaluation_smoke_2024-12-17.csv
-- evaluation_stock_tools_2024-12-17.csv
-- evaluation_production_2024-12-17.csv
-```
-
----
-
 ## Interpreting Results
 
 ### Summary Metrics
@@ -473,109 +398,3 @@ Each test shows:
 - Full agent response
 - LLM judge explanation
 
----
-
-## Advanced Usage
-
-### API Testing
-
-Test via API instead of UI:
-
-```bash
-# Upload CSV and stream results
-curl -N -X POST "http://localhost:8000/evaluations/run" \
-  -F "file=@my_tests.csv"
-```
-
-Results stream as SSE events:
-- `test_case_start` - Test beginning
-- `test_case_result` - Test completed
-- `summary` - All tests finished
-- `error` - Test failed
-
-### Programmatic Evaluation
-
-Create test datasets programmatically:
-
-```python
-import csv
-
-tests = [
-    {
-        "test_id": "1",
-        "query": "What is Apple's stock price?",
-        "expected_tool": "get_stock_price",
-        "expected_args": '{"ticker":"AAPL"}',
-        "expected_response_contains": "current price,Apple"
-    },
-    # ... more tests
-]
-
-with open('automated_tests.csv', 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=tests[0].keys())
-    writer.writeheader()
-    writer.writerows(tests)
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue:** CSV upload fails with "Invalid CSV format"
-- **Solution:** Check column names match exactly
-- Ensure no extra spaces in headers
-- Verify file encoding is UTF-8
-
-**Issue:** "expected_args must be valid JSON"
-- **Solution:** Use escaped quotes: `{""key"":""value""}`
-- Don't use single quotes
-- Validate JSON syntax
-
-**Issue:** Tool selection score is 0 but tool was called
-- **Solution:** Check tool name is internal name (snake_case)
-- Example: Use `get_stock_price` not `"Stock Price Lookup"`
-
-**Issue:** Argument match score is low
-- **Solution:** Check argument names match exactly
-- Ensure data types match (string vs number)
-- Include all required arguments
-
-**Issue:** Faithfulness score is low despite correct response
-- **Solution:** Check `expected_response_contains` keywords are in response
-- Keywords should be general, not exact phrases
-- Ensure response actually uses tool outputs
-
----
-
-## Limits and Performance
-
-- **Max File Size:** 5MB
-- **Max Test Cases:** 100 per CSV
-- **Per-Test Timeout:** 60 seconds
-- **Average Test Time:** 3-13 seconds
-  - 2-10s for agent execution
-  - 1-3s for LLM judge evaluation
-
-**Performance Tips:**
-- Keep test datasets under 50 tests for quick feedback
-- Use batch processing for large test suites
-- Consider parallelization for production testing
-
----
-
-## Support and Resources
-
-- **Sample Dataset:** `sample_evaluation.csv`
-- **CSV Format Help:** Available in evaluation UI
-- **API Docs:** http://localhost:8000/docs
-- **Main Documentation:** [README.md](./README.md)
-
----
-
-<div align="center">
-
-**Happy Testing! 🧪**
-
-Test often, test thoroughly, and iterate on your agent's performance.
-
-</div>
