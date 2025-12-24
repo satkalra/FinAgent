@@ -350,7 +350,7 @@ class AgentService:
                 # Signal completion (frontend will create message from accumulated chunks)
                 yield {
                     "type": "status",
-                    "status": "complete",
+                    "status": "completed",
                     "message": "Response complete",
                     "progress": 100,
                 }

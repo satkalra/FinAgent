@@ -1,10 +1,13 @@
 #!/bin/bash
 
+# Get the root directory of the script
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "🚀 Starting FinAgent..."
 echo ""
 
 # Check if .env file exists
-if [ ! -f "backend/.env" ]; then
+if [ ! -f "$ROOT_DIR/backend/.env" ]; then
     echo "❌ Error: backend/.env file not found!"
     echo ""
     echo "Please create backend/.env with your OpenAI API key:"
@@ -19,9 +22,9 @@ fi
 
 # Start backend in background
 echo "📡 Starting backend server..."
-cd backend && uvicorn app.main:app --reload > /dev/null 2>&1 &
+cd "$ROOT_DIR/backend" && uvicorn app.main:app --reload > /dev/null 2>&1 &
 BACKEND_PID=$!
-cd ..
+cd "$ROOT_DIR"
 
 # Wait for backend to be ready
 echo "⏳ Waiting for backend to start..."
@@ -39,9 +42,9 @@ echo "✅ Backend running on http://localhost:8000"
 
 # Start frontend in background
 echo "🎨 Starting frontend server..."
-cd frontend && npm run dev > /dev/null 2>&1 &
+cd "$ROOT_DIR/frontend" && npm run dev > /dev/null 2>&1 &
 FRONTEND_PID=$!
-cd ..
+cd "$ROOT_DIR"
 
 # Wait for frontend to be ready
 echo "⏳ Waiting for frontend to start..."

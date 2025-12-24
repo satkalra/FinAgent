@@ -156,7 +156,7 @@ async def stream_chat(request: ChatRequest):
             yield sse_manager.format_sse(
                 {
                     "type": "status",
-                    "status": "complete",
+                    "status": "completed",
                     "message": "Streaming complete",
                 },
                 event="status",
