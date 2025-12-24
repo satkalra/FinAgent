@@ -6,6 +6,7 @@ import re
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional
 from app.schemas.message import AgentStatus, StatusUpdate
+from app.schemas.agent_response import AgentResponse
 from app.services.openai_service import openai_service
 from app.tools import tool_registry
 from openai.types.chat import ChatCompletionMessageParam
@@ -104,23 +105,31 @@ class AgentService:
                 )
             )
 
-            # Call OpenAI for structured JSON response (no function calling)
+            # Call OpenAI with structured outputs for guaranteed JSON
             response = await self.openai_service.create_chat_completion(
                 messages=messages,
-                tools=None,  # Don't use function calling, we want JSON
+                tools=None,
                 stream=False,
+                response_format=AgentResponse,
             )
 
+            # With parse(), the structured object is in .parsed attribute
+            parsed_obj: AgentResponse = response.choices[0].message.parsed
             assistant_content = response.choices[0].message.content or ""
 
-            # Parse JSON response
-            parsed_response = self._extract_json_from_response(assistant_content)
-
-            if not parsed_response:
-                # Fallback: treat as final answer if JSON parsing fails
-                logger.warning(
-                    "Failed to parse JSON response: %s", {assistant_content[:200]}
-                )
+            if parsed_obj:
+                # Direct access to Pydantic model fields
+                thought = parsed_obj.thought
+                action = parsed_obj.action
+                # Parse action_input from JSON string to dict
+                try:
+                    action_input = json.loads(parsed_obj.action_input)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse action_input: %s", parsed_obj.action_input)
+                    action_input = {}
+            else:
+                # Fallback if parsing failed (should never happen)
+                logger.error("Structured output parsing returned None")
                 status_updates.append(
                     StatusUpdate(
                         status=AgentStatus.COMPLETED,
@@ -135,11 +144,6 @@ class AgentService:
                     "thoughts": thoughts,
                     "iterations": iteration,
                 }
-
-            # Extract fields
-            thought = parsed_response.get("thought", "")
-            action = parsed_response.get("action", "")
-            action_input = parsed_response.get("action_input", {})
             display_action = action
             if action and action != "final_answer":
                 display_action = self._get_tool_display_name(action)
@@ -273,42 +277,37 @@ class AgentService:
                 "progress": min(int((iteration / self.max_iterations) * 100), 90),
             }
 
-            # Stream the response
-            stream = self.openai_service.create_streaming_completion(
+            # Use structured outputs for guaranteed JSON response
+            response = await self.openai_service.create_chat_completion(
                 messages=messages,
-                tools=None,  # No function calling for structured JSON
+                tools=None,
+                stream=False,
+                response_format=AgentResponse,
             )
 
-            # Collect content chunks (but don't stream them yet - they might be raw JSON)
-            content_chunks = []
+            # With parse(), the structured object is in .parsed attribute
+            parsed_obj = response.choices[0].message.parsed
+            full_content = response.choices[0].message.content or ""
 
-            async for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-
-                if not delta:
-                    continue
-
-                # Handle content - just collect, don't stream yet
-                if delta.content:
-                    content_chunks.append(delta.content)
-
-            # Parse the complete response
-            full_content = "".join(content_chunks)
-            parsed_response = self._extract_json_from_response(full_content)
-
-            if not parsed_response:
-                # Fallback to final answer
+            if parsed_obj:
+                # Direct access to Pydantic model fields
+                thought = parsed_obj.thought
+                action = parsed_obj.action
+                # Parse action_input from JSON string to dict
+                try:
+                    action_input = json.loads(parsed_obj.action_input)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse action_input: %s", parsed_obj.action_input)
+                    action_input = {}
+            else:
+                # Fallback if parsing failed (should never happen)
+                logger.error("Structured output parsing returned None")
                 yield {
                     "type": "final_answer",
                     "content": full_content,
                     "iterations": iteration,
                 }
                 return
-
-            # Extract fields
-            thought = parsed_response.get("thought", "")
-            action = parsed_response.get("action", "")
-            action_input = parsed_response.get("action_input", {})
             display_action = action
             if action and action != "final_answer":
                 display_action = self._get_tool_display_name(action)
